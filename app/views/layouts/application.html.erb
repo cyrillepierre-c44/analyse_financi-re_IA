@@ -7,34 +7,39 @@
     <%= csp_meta_tag %>
     <%= yield :head %>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
 
   <body class="bg-gray-50 text-gray-800 min-h-screen">
 
-    <nav class="bg-white border-b border-gray-200 shadow-sm">
+    <nav class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14">
         <div class="flex items-center gap-6">
           <%= link_to "📊 AnalyseFinancière", root_path, class: "font-bold text-indigo-700 text-lg tracking-tight" %>
-          <%= link_to "Sociétés", companies_path, class: "text-sm text-gray-600 hover:text-indigo-600" %>
+          <%= link_to "Sociétés", companies_path, class: "text-sm text-gray-600 hover:text-indigo-600 transition-colors" %>
         </div>
-        <div class="text-xs text-gray-400">Powered by GPT-4o</div>
+        <div class="flex items-center gap-3">
+          <%= link_to "+ Nouvelle société", new_company_path,
+              class: "text-sm border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors" %>
+          <span class="text-xs text-gray-400 hidden sm:block">GPT-4o</span>
+        </div>
       </div>
     </nav>
 
     <% if notice.present? %>
       <div class="max-w-7xl mx-auto px-4 mt-4">
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-3 text-sm">
-          <%= notice %>
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+          <span>✓</span> <%= notice %>
         </div>
       </div>
     <% end %>
 
     <% if alert.present? %>
       <div class="max-w-7xl mx-auto px-4 mt-4">
-        <div class="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-3 text-sm">
-          <%= alert %>
+        <div class="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+          <span>⚠</span> <%= alert %>
         </div>
       </div>
     <% end %>
@@ -43,7 +48,7 @@
       <%= yield %>
     </main>
 
-    <footer class="text-center text-xs text-gray-400 py-6 mt-12 border-t border-gray-100">
+    <footer class="text-center text-xs text-gray-400 py-6 mt-8 border-t border-gray-100">
       Analyse Financière IA — données comptables confidentielles
     </footer>
 

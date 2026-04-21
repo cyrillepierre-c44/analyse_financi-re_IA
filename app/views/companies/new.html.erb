@@ -1,0 +1,83 @@
+<% content_for :title, "Nouvelle société" %>
+
+<div class="mb-6">
+  <%= link_to "← Sociétés", companies_path, class: "text-sm text-indigo-600 hover:underline" %>
+</div>
+
+<div class="max-w-lg">
+  <h1 class="text-2xl font-bold text-gray-900 mb-8">Nouvelle société</h1>
+
+  <%= form_with model: @company,
+      class: "bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5" do |f| %>
+
+    <% if @company.errors.any? %>
+      <div class="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800">
+        <p class="font-medium mb-1">Erreur<%= "s" if @company.errors.count > 1 %> :</p>
+        <ul class="list-disc list-inside space-y-0.5">
+          <% @company.errors.full_messages.each do |msg| %>
+            <li><%= msg %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div>
+      <%= f.label :name, "Raison sociale *", class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.text_field :name,
+          placeholder: "ex. Centaur Bike",
+          class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <%= f.label :siren, "SIREN", class: "block text-sm font-medium text-gray-700 mb-1" %>
+        <%= f.text_field :siren,
+            placeholder: "ex. 892208018",
+            maxlength: 9,
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+      </div>
+      <div>
+        <%= f.label :sector, "Secteur d'activité", class: "block text-sm font-medium text-gray-700 mb-1" %>
+        <%= f.text_field :sector,
+            placeholder: "ex. Vélo électrique",
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <%= f.label :accounting_standard, "Référentiel", class: "block text-sm font-medium text-gray-700 mb-1" %>
+        <%= f.select :accounting_standard,
+            [["PCG (Plan Comptable Général)", "pcg"], ["IFRS", "ifrs"]],
+            {},
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none bg-white" %>
+      </div>
+      <div>
+        <%= f.label :country, "Pays", class: "block text-sm font-medium text-gray-700 mb-1" %>
+        <%= f.text_field :country,
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <%= f.label :currency, "Devise", class: "block text-sm font-medium text-gray-700 mb-1" %>
+        <%= f.text_field :currency,
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+      </div>
+      <div class="flex items-center pt-6">
+        <%= f.check_box :is_consolidated,
+            class: "w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-300" %>
+        <%= f.label :is_consolidated, "Comptes consolidés",
+            class: "ml-2 text-sm text-gray-700" %>
+      </div>
+    </div>
+
+    <div class="flex gap-3 pt-2">
+      <%= f.submit "Créer la société",
+          class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2 rounded-lg cursor-pointer transition-colors" %>
+      <%= link_to "Annuler", companies_path,
+          class: "text-sm text-gray-500 hover:text-gray-700 px-4 py-2" %>
+    </div>
+  <% end %>
+</div>

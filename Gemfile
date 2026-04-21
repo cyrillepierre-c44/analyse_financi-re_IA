@@ -17,6 +17,9 @@ gem "stimulus-rails"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 gem "jbuilder"
 
+# Variables d'environnement depuis .env
+gem "dotenv-rails", groups: [:development, :test]
+
 # AI / LLM
 gem "ruby_llm"
 

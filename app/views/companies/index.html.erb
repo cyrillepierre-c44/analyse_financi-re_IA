@@ -5,19 +5,24 @@
     <h1 class="text-2xl font-bold text-gray-900">Sociétés</h1>
     <p class="text-sm text-gray-500 mt-1"><%= @companies.count %> société<%= "s" if @companies.count > 1 %> dans la base</p>
   </div>
+  <%= link_to "+ Nouvelle société", new_company_path,
+      class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors" %>
 </div>
 
 <% if @companies.empty? %>
   <div class="text-center py-20 text-gray-400">
     <p class="text-5xl mb-4">📂</p>
     <p class="text-lg font-medium">Aucune société pour l'instant</p>
-    <p class="text-sm mt-2">Lancez <code class="bg-gray-100 px-1 rounded">rails db:seed</code> pour charger les données de démonstration.</p>
+    <%= link_to "Créer la première société", new_company_path,
+        class: "inline-block mt-4 text-sm text-indigo-600 hover:underline" %>
   </div>
 <% else %>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
     <% @companies.each do |company| %>
-      <% last_report = company.financial_reports.max_by(&:fiscal_year) %>
-      <%= link_to company_path(company), class: "bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all p-5 group" do %>
+      <% reports = company.financial_reports.sort_by(&:fiscal_year) %>
+      <% last_report = reports.last %>
+      <%= link_to company_path(company),
+          class: "bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all p-5 group" do %>
         <div class="flex items-start justify-between">
           <div>
             <h2 class="font-semibold text-gray-900 group-hover:text-indigo-700 text-base leading-tight">
@@ -36,13 +41,28 @@
           <p class="text-sm text-gray-500 mt-2"><%= company.sector %></p>
         <% end %>
 
+        <% if reports.size >= 2 %>
+          <% tcam = company.cagr_revenue %>
+          <% if tcam %>
+            <div class="mt-3 flex items-center gap-1.5 text-xs">
+              <span class="text-gray-400">TCAM CA :</span>
+              <span class="font-semibold <%= tcam >= 0 ? 'text-emerald-600' : 'text-rose-600' %>">
+                <%= tcam >= 0 ? "+" : "" %><%= number_with_precision(tcam * 100, precision: 1) %>%/an
+              </span>
+              <span class="text-gray-300">(<%= reports.first.fiscal_year %>–<%= reports.last.fiscal_year %>)</span>
+            </div>
+          <% end %>
+        <% end %>
+
         <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-          <span class="text-xs text-gray-400">
-            <%= company.financial_reports.count %> exercice<%= "s" if company.financial_reports.count > 1 %>
-          </span>
-          <% if last_report %>
+          <div class="flex gap-1">
+            <% reports.each do |r| %>
+              <span class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono"><%= r.fiscal_year %></span>
+            <% end %>
+          </div>
+          <% if last_report&.income_statement&.revenue %>
             <span class="text-xs font-medium text-gray-600">
-              Dernier : <%= last_report.fiscal_year %>
+              CA <%= euros(last_report.income_statement.revenue) %>
             </span>
           <% end %>
         </div>
