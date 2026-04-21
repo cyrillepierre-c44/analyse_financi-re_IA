@@ -45,14 +45,37 @@ class FinancialPdfImporter
   end
 
   # ── 2. ANALYSE LLM ────────────────────────────────────────────────────
+  # Appel direct à l'API GitHub Models via Faraday (ruby_llm ajoute /v1/
+  # qui n'est pas supporté par models.inference.ai.azure.com)
 
   def parse_with_llm(text)
-    prompt = build_prompt(text)
-    chat   = RubyLLM.chat(model: MODEL)
-    response = chat.ask(prompt)
-    raw = response.content.to_s
+    prompt   = build_prompt(text)
+    api_key  = ENV["GITHUB_KEY"].presence or raise "GITHUB_KEY absent — vérifiez le fichier .env"
 
-    # Extraire le bloc JSON de la réponse (entre ```json ... ``` ou directement)
+    conn = Faraday.new("https://models.inference.ai.azure.com") do |f|
+      f.request  :json
+      f.response :json
+      f.options.timeout      = 120
+      f.options.open_timeout = 10
+    end
+
+    response = conn.post("/chat/completions") do |req|
+      req.headers["Authorization"] = "Bearer #{api_key}"
+      req.headers["Content-Type"]  = "application/json"
+      req.body = {
+        model:       MODEL,
+        messages:    [ { role: "user", content: prompt } ],
+        temperature: 0,
+        max_tokens:  4096
+      }.to_json
+    end
+
+    unless response.status == 200
+      err = response.body.dig("error", "message") || response.body.inspect
+      raise "Erreur API GitHub Models (#{response.status}) : #{err}"
+    end
+
+    raw      = response.body.dig("choices", 0, "message", "content").to_s
     json_str = raw[/```json\s*(.*?)\s*```/m, 1] || raw[/\{.*\}/m]
     raise "Aucun JSON trouvé dans la réponse LLM" if json_str.blank?
 
