@@ -17,19 +17,22 @@ class IncomeStatement < ApplicationRecord
   end
 
   # Valeur Ajoutée = Marge commerciale + Production - Consommations externes
+  # Pour les sociétés commerciales (sans matières premières) raw_materials_purchases est nil → traité comme 0
   def value_added_calculated
     return value_added if value_added.present?
-    return nil unless production_total && raw_materials_purchases && other_external_expenses
+    return nil unless other_external_expenses
     cm = commercial_margin_calculated || 0
-    consommations = (raw_materials_purchases || 0) + (raw_materials_stock_variation || 0) + (other_external_expenses || 0)
-    cm + production_total - consommations
+    prod = production_total || 0
+    consommations = (raw_materials_purchases || 0) + (raw_materials_stock_variation || 0) + other_external_expenses
+    cm + prod - consommations
   end
 
   # EBE = VA + Subventions d'exploitation - Charges personnel - Impôts & taxes
+  # En l'absence de charges personnel (gérant non salarié), on accepte nil → 0
   def ebitda_calculated
     return ebitda if ebitda.present?
     va = value_added_calculated
-    return nil unless va && personnel_expenses
+    return nil unless va
     va + (operating_subsidies || 0) - (personnel_expenses || 0) - (taxes_and_duties || 0)
   end
 

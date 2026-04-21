@@ -11,6 +11,9 @@
 # It's strongly recommended that you check this file into your version control system.
 
 ActiveRecord::Schema[8.1].define(version: 2026_04_21_000006) do
+  # These are extensions that must be enabled in order to support this database
+  enable_extension "pg_catalog.plpgsql"
+
   create_table "balance_sheets", force: :cascade do |t|
     t.decimal "cash_and_equivalents", precision: 15, scale: 2
     t.datetime "created_at", null: false
@@ -99,7 +102,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_21_000006) do
     t.string "siren"
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_companies_on_name"
-    t.index ["siren"], name: "index_companies_on_siren", unique: true, where: "siren IS NOT NULL"
+    t.index ["siren"], name: "index_companies_on_siren", unique: true, where: "(siren IS NOT NULL)"
   end
 
   create_table "cost_structures", force: :cascade do |t|

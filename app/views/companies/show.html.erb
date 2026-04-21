@@ -1,0 +1,114 @@
+<% content_for :title, "#{@company.name} — Analyse Financière IA" %>
+
+<div class="mb-6">
+  <%= link_to "← Sociétés", companies_path, class: "text-sm text-indigo-600 hover:underline" %>
+</div>
+
+<div class="flex items-start justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900"><%= @company.name %></h1>
+    <div class="flex items-center gap-3 mt-1 text-sm text-gray-500">
+      <% if @company.siren.present? %>
+        <span>SIREN <%= @company.siren %></span>
+        <span>·</span>
+      <% end %>
+      <% if @company.sector.present? %>
+        <span><%= @company.sector %></span>
+        <span>·</span>
+      <% end %>
+      <span class="uppercase font-medium text-indigo-600"><%= @company.accounting_standard %></span>
+      <% if @company.is_consolidated? %>
+        <span class="bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded-full">Consolidé</span>
+      <% end %>
+    </div>
+  </div>
+  <%= link_to "📥 Importer un PDF", new_company_import_path(@company),
+      class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors" %>
+</div>
+
+<% if @reports.empty? %>
+  <div class="text-center py-16 text-gray-400">
+    <p class="text-4xl mb-3">📋</p>
+    <p class="font-medium">Aucun exercice enregistré</p>
+    <p class="text-sm mt-1">Importez un PDF pour commencer l'analyse.</p>
+  </div>
+<% else %>
+  <%# Tableau de synthèse multi-années %>
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
+    <div class="px-6 py-4 border-b border-gray-100">
+      <h2 class="font-semibold text-gray-800">Comparatif pluriannuel</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-6 py-3 text-left">Indicateur</th>
+            <% @reports.each do |r| %>
+              <th class="px-4 py-3 text-right"><%= r.fiscal_year %></th>
+            <% end %>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          <% [
+            ["Chiffre d'affaires", ->(r){ r.income_statement&.revenue }, :euros],
+            ["Marge commerciale", ->(r){ r.income_statement&.commercial_margin }, :euros],
+            ["Marge commerciale %", ->(r){ r.income_statement&.commercial_margin && r.income_statement.revenue ? r.income_statement.commercial_margin / r.income_statement.revenue : nil }, :pct],
+            ["EBIT", ->(r){ r.income_statement&.ebit }, :euros],
+            ["Marge EBIT %", ->(r){ r.income_statement&.ebit_margin }, :pct],
+            ["Résultat net", ->(r){ r.income_statement&.net_income }, :euros],
+            ["Marge nette %", ->(r){ r.income_statement&.net_margin }, :pct],
+            ["Capitaux propres", ->(r){ r.balance_sheet&.total_equity }, :euros],
+            ["BFR", ->(r){ r.balance_sheet&.working_capital_requirement }, :euros],
+            ["Dette nette", ->(r){ r.balance_sheet&.net_financial_debt }, :euros],
+            ["Re (EBIT/actif éco.)", ->(r){ r.economic_return }, :pct],
+            ["Rcp (RN/CP)", ->(r){ r.return_on_equity }, :pct],
+          ].each do |label, extractor, fmt| %>
+            <tr class="hover:bg-gray-50">
+              <td class="px-6 py-3 text-gray-600"><%= label %></td>
+              <% @reports.each do |r| %>
+                <% val = extractor.call(r) %>
+                <td class="px-4 py-3 text-right font-mono text-gray-800">
+                  <%= fmt == :pct ? pct(val) : euros(val) %>
+                </td>
+              <% end %>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <%# Cartes exercices %>
+  <h2 class="text-lg font-semibold text-gray-800 mb-4">Accès par exercice</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <% @reports.each do |report| %>
+      <% is = report.income_statement; bs = report.balance_sheet %>
+      <%= link_to company_financial_report_path(@company, report),
+          class: "bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all p-5 group" do %>
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xl font-bold text-gray-900 group-hover:text-indigo-700"><%= report.fiscal_year %></span>
+          <span class="text-xs text-gray-400"><%= report.period_end_date.strftime("%d/%m/%Y") %></span>
+        </div>
+        <% if is %>
+          <div class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-500">CA</span>
+              <span class="font-medium"><%= euros(is.revenue) %></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">EBIT</span>
+              <span class="font-medium"><%= euros(is.ebit) %></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Résultat net</span>
+              <span class="font-medium"><%= euros(is.net_income) %></span>
+            </div>
+          </div>
+        <% end %>
+        <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-indigo-600 font-medium">
+          Voir l'analyse détaillée →
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>

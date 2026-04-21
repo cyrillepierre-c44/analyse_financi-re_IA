@@ -1,0 +1,52 @@
+<% content_for :title, "Sociétés — Analyse Financière IA" %>
+
+<div class="flex items-center justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">Sociétés</h1>
+    <p class="text-sm text-gray-500 mt-1"><%= @companies.count %> société<%= "s" if @companies.count > 1 %> dans la base</p>
+  </div>
+</div>
+
+<% if @companies.empty? %>
+  <div class="text-center py-20 text-gray-400">
+    <p class="text-5xl mb-4">📂</p>
+    <p class="text-lg font-medium">Aucune société pour l'instant</p>
+    <p class="text-sm mt-2">Lancez <code class="bg-gray-100 px-1 rounded">rails db:seed</code> pour charger les données de démonstration.</p>
+  </div>
+<% else %>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+    <% @companies.each do |company| %>
+      <% last_report = company.financial_reports.max_by(&:fiscal_year) %>
+      <%= link_to company_path(company), class: "bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all p-5 group" do %>
+        <div class="flex items-start justify-between">
+          <div>
+            <h2 class="font-semibold text-gray-900 group-hover:text-indigo-700 text-base leading-tight">
+              <%= company.name %>
+            </h2>
+            <% if company.siren.present? %>
+              <p class="text-xs text-gray-400 mt-0.5">SIREN <%= company.siren %></p>
+            <% end %>
+          </div>
+          <span class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+            <%= company.accounting_standard.upcase %>
+          </span>
+        </div>
+
+        <% if company.sector.present? %>
+          <p class="text-sm text-gray-500 mt-2"><%= company.sector %></p>
+        <% end %>
+
+        <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+          <span class="text-xs text-gray-400">
+            <%= company.financial_reports.count %> exercice<%= "s" if company.financial_reports.count > 1 %>
+          </span>
+          <% if last_report %>
+            <span class="text-xs font-medium text-gray-600">
+              Dernier : <%= last_report.fiscal_year %>
+            </span>
+          <% end %>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+<% end %>

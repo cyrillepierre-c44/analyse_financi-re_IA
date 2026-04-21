@@ -1,29 +1,51 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
   <head>
-    <title><%= content_for(:title) || "Analyse Financiere Ia" %></title>
+    <title><%= content_for(:title) || "Analyse Financière IA" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Analyse Financiere Ia">
-    <meta name="mobile-web-app-capable" content="yes">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
-
     <%= yield :head %>
-
-    <%# Enable PWA manifest for installable apps (make sure to enable in config/routes.rb too!) %>
-    <%#= tag.link rel: "manifest", href: pwa_manifest_path(format: :json) %>
-
-    <link rel="icon" href="/icon.png" type="image/png">
-    <link rel="icon" href="/icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/icon.png">
-
-    <%# Includes all stylesheet files in app/assets/stylesheets %>
+    <script src="https://cdn.tailwindcss.com"></script>
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
 
-  <body>
-    <%= yield %>
+  <body class="bg-gray-50 text-gray-800 min-h-screen">
+
+    <nav class="bg-white border-b border-gray-200 shadow-sm">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14">
+        <div class="flex items-center gap-6">
+          <%= link_to "📊 AnalyseFinancière", root_path, class: "font-bold text-indigo-700 text-lg tracking-tight" %>
+          <%= link_to "Sociétés", companies_path, class: "text-sm text-gray-600 hover:text-indigo-600" %>
+        </div>
+        <div class="text-xs text-gray-400">Powered by GPT-4o</div>
+      </div>
+    </nav>
+
+    <% if notice.present? %>
+      <div class="max-w-7xl mx-auto px-4 mt-4">
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-3 text-sm">
+          <%= notice %>
+        </div>
+      </div>
+    <% end %>
+
+    <% if alert.present? %>
+      <div class="max-w-7xl mx-auto px-4 mt-4">
+        <div class="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-3 text-sm">
+          <%= alert %>
+        </div>
+      </div>
+    <% end %>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <%= yield %>
+    </main>
+
+    <footer class="text-center text-xs text-gray-400 py-6 mt-12 border-t border-gray-100">
+      Analyse Financière IA — données comptables confidentielles
+    </footer>
+
   </body>
 </html>
