@@ -66,7 +66,7 @@ class FinancialPdfImporter
         model:       MODEL,
         messages:    [ { role: "user", content: prompt } ],
         temperature: 0,
-        max_tokens:  4096
+        max_tokens:  8192
       }.to_json
     end
 
@@ -90,7 +90,7 @@ class FinancialPdfImporter
       Analyse le document financier suivant et extrais les données dans un JSON structuré.
 
       ## Document
-      #{text.truncate(12_000)}
+      #{text.truncate(24_000)}
 
       ## Instructions
       - Retourne UNIQUEMENT un bloc JSON valide (pas d'explication).
@@ -263,7 +263,27 @@ class FinancialPdfImporter
   def save_income_statement(report, attrs, unit)
     record = report.income_statement || report.build_income_statement
     record.assign_attributes(scale(attrs, unit))
+    backfill_income_statement(record)
     record.save!
+  end
+
+  # Calcule et stocke les champs dérivables si le LLM ne les a pas fournis
+  def backfill_income_statement(r)
+    # Marge commerciale
+    if r.commercial_margin.blank? && r.merchandise_sales && r.merchandise_purchases && r.merchandise_stock_variation
+      r.commercial_margin = r.merchandise_sales - r.merchandise_purchases - r.merchandise_stock_variation
+    end
+
+    # Revenue = merchandise_sales + production_sold si absent
+    if r.revenue.blank? && r.merchandise_sales
+      r.revenue = (r.merchandise_sales || 0) + (r.production_sold || 0)
+    end
+
+    # EBIT depuis le résultat net si absent (approximation sans exceptionnel)
+    if r.ebit.blank? && r.net_income && r.income_tax
+      exceptional = (r.exceptional_income || 0) - (r.exceptional_expenses || 0)
+      r.ebit = r.net_income + r.income_tax - exceptional - (r.financial_income || 0) + (r.financial_expenses || 0)
+    end
   end
 
   def save_balance_sheet(report, attrs, unit)

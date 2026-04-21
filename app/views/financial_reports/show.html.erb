@@ -102,7 +102,7 @@
           { label: "Ventes marchandises",      val: is.merchandise_sales, prev: prev_is&.merchandise_sales, indent: 0 },
           { label: "− Coût d'achat march.",     val: is.merchandise_purchases && is.merchandise_stock_variation ? (is.merchandise_purchases + is.merchandise_stock_variation) : nil,
                                                prev: prev_is&.merchandise_purchases && prev_is&.merchandise_stock_variation ? (prev_is.merchandise_purchases + prev_is.merchandise_stock_variation) : nil, indent: 1 },
-          { label: "= Marge commerciale",       val: is.commercial_margin, prev: prev_is&.commercial_margin, indent: 0, bold: true, sep: true },
+          { label: "= Marge commerciale",       val: is.commercial_margin_calculated, prev: prev_is&.commercial_margin_calculated, indent: 0, bold: true, sep: true },
           { label: "+ Production vendue",       val: is.production_sold,   prev: prev_is&.production_sold,   indent: 1 },
           { label: "− Autres charges externes", val: is.other_external_expenses, prev: prev_is&.other_external_expenses, indent: 1 },
           { label: "= Valeur Ajoutée",          val: is.value_added_calculated, prev: prev_is&.value_added_calculated, indent: 0, bold: true, sep: true },

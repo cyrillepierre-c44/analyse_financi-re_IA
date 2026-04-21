@@ -182,7 +182,7 @@
       <tbody class="divide-y divide-gray-50">
         <% [
           ["Chiffre d'affaires",       ->(r){ r.income_statement&.revenue },          :euros],
-          ["Marge commerciale",         ->(r){ r.income_statement&.commercial_margin }, :euros],
+          ["Marge commerciale",         ->(r){ r.income_statement&.commercial_margin_calculated }, :euros],
           ["Valeur Ajoutée",            ->(r){ r.income_statement&.value_added_calculated }, :euros],
           ["EBE (EBITDA)",              ->(r){ r.income_statement&.ebitda_calculated },  :euros],
           ["EBIT",                      ->(r){ r.income_statement&.ebit },               :euros],
