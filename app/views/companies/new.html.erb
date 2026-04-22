@@ -1,0 +1,159 @@
+<% content_for :title, "Nouvelle société" %>
+
+<div class="mb-6">
+  <%= link_to "← Sociétés", companies_path, class: "text-sm text-indigo-600 hover:underline" %>
+</div>
+
+<div class="max-w-lg">
+  <h1 class="text-2xl font-bold text-gray-900 mb-2">Nouvelle société</h1>
+  <p class="text-sm text-gray-500 mb-6">Créez une fiche société en uploadant un PDF ou en remplissant le formulaire manuellement.</p>
+
+  <%# ── Toggle mode ── %>
+  <div class="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl w-fit">
+    <button id="btn-pdf" onclick="switchMode('pdf')"
+      class="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-white shadow text-indigo-700">
+      Depuis un PDF
+    </button>
+    <button id="btn-manual" onclick="switchMode('manual')"
+      class="px-4 py-2 rounded-lg text-sm font-medium transition-all text-gray-500 hover:text-gray-700">
+      Saisie manuelle
+    </button>
+  </div>
+
+  <% if @company.errors.any? %>
+    <div class="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 mb-5">
+      <p class="font-medium mb-1">Erreur<%= "s" if @company.errors.count > 1 %> :</p>
+      <ul class="list-disc list-inside space-y-0.5">
+        <% @company.errors.full_messages.each do |msg| %>
+          <li><%= msg %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%# ── Mode PDF ── %>
+  <div id="mode-pdf">
+    <%= form_with url: companies_path, method: :post, multipart: true,
+        class: "bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5" do |f| %>
+
+      <div class="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 text-sm text-indigo-800">
+        <p class="font-medium mb-1">Import automatique par IA</p>
+        <p class="text-xs text-indigo-600">
+          GPT-4o va identifier la société, le secteur, le référentiel comptable et extraire
+          toutes les années financières présentes dans le document.
+        </p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Fichier PDF</label>
+        <input type="file" name="pdf_file" accept="application/pdf"
+          class="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
+        <p class="text-xs text-gray-400 mt-1">Bilan, compte de résultat, rapport annuel — un ou plusieurs exercices.</p>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800 space-y-1">
+        <p><strong>Note :</strong> L'analyse peut prendre 20 à 60 secondes.</p>
+        <p>Le PDF doit contenir du texte sélectionnable (pas un scan image).</p>
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button type="submit"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors">
+          Analyser et créer
+        </button>
+        <%= link_to "Annuler", companies_path, class: "text-sm text-gray-500 hover:text-gray-700 px-4 py-2" %>
+      </div>
+    <% end %>
+  </div>
+
+  <%# ── Mode manuel ── %>
+  <div id="mode-manual" class="hidden">
+    <%= form_with model: @company,
+        class: "bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5" do |f| %>
+
+      <div>
+        <%= f.label :name, "Raison sociale *", class: "block text-sm font-medium text-gray-700 mb-1" %>
+        <%= f.text_field :name,
+            placeholder: "ex. Centaur Bike",
+            class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <%= f.label :siren, "SIREN", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_field :siren,
+              placeholder: "ex. 892208018",
+              maxlength: 9,
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+        </div>
+        <div>
+          <%= f.label :sector, "Secteur d'activité", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_field :sector,
+              placeholder: "ex. Vélo électrique",
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <%= f.label :accounting_standard, "Référentiel", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.select :accounting_standard,
+              [["PCG (Plan Comptable Général)", "pcg"], ["IFRS", "ifrs"]],
+              {},
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none bg-white" %>
+        </div>
+        <div>
+          <%= f.label :country, "Pays", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_field :country,
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <%= f.label :currency, "Devise", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_field :currency,
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
+        </div>
+        <div class="flex items-center pt-6">
+          <%= f.check_box :is_consolidated,
+              class: "w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-300" %>
+          <%= f.label :is_consolidated, "Comptes consolidés",
+              class: "ml-2 text-sm text-gray-700" %>
+        </div>
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <%= f.submit "Créer la société",
+            class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2 rounded-lg cursor-pointer transition-colors" %>
+        <%= link_to "Annuler", companies_path,
+            class: "text-sm text-gray-500 hover:text-gray-700 px-4 py-2" %>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<script>
+  function switchMode(mode) {
+    const pdf    = document.getElementById('mode-pdf');
+    const manual = document.getElementById('mode-manual');
+    const btnPdf    = document.getElementById('btn-pdf');
+    const btnManual = document.getElementById('btn-manual');
+
+    if (mode === 'pdf') {
+      pdf.classList.remove('hidden');
+      manual.classList.add('hidden');
+      btnPdf.classList.add('bg-white', 'shadow', 'text-indigo-700');
+      btnPdf.classList.remove('text-gray-500');
+      btnManual.classList.remove('bg-white', 'shadow', 'text-indigo-700');
+      btnManual.classList.add('text-gray-500');
+    } else {
+      manual.classList.remove('hidden');
+      pdf.classList.add('hidden');
+      btnManual.classList.add('bg-white', 'shadow', 'text-indigo-700');
+      btnManual.classList.remove('text-gray-500');
+      btnPdf.classList.remove('bg-white', 'shadow', 'text-indigo-700');
+      btnPdf.classList.add('text-gray-500');
+    }
+  }
+</script>

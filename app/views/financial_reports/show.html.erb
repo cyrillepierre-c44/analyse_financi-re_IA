@@ -1,0 +1,615 @@
+<% content_for :title, "#{@company.name} #{@report.fiscal_year} — Analyse Financière IA" %>
+
+<% is = @report.income_statement; bs = @report.balance_sheet %>
+<% prev_is = @prev_report&.income_statement; prev_bs = @prev_report&.balance_sheet %>
+
+<%# ── BREADCRUMB ────────────────────────────────────────────────────────────── %>
+<div class="flex items-center gap-2 text-sm mb-6">
+  <%= link_to "Sociétés", companies_path, class: "text-indigo-600 hover:underline" %>
+  <span class="text-gray-300">/</span>
+  <%= link_to @company.name, company_path(@company), class: "text-indigo-600 hover:underline" %>
+  <span class="text-gray-300">/</span>
+  <span class="text-gray-600 font-medium"><%= @report.fiscal_year %></span>
+</div>
+
+<%# ── HEADER ────────────────────────────────────────────────────────────────── %>
+<div class="flex items-start justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">
+      <%= @company.name %> — Exercice <%= @report.fiscal_year %>
+    </h1>
+    <p class="text-sm text-gray-500 mt-1">
+      <%= @report.period_end_date.strftime("01/01/%Y au %d/%m/%Y") %> ·
+      Format <%= @report.income_format %> · <%= @report.accounting_standard.upcase %>
+      <% if @report.source_file.present? %>
+        · <span class="italic"><%= @report.source_file %></span>
+      <% end %>
+    </p>
+  </div>
+  <div class="flex gap-2">
+    <% if @prev_report %>
+      <%= link_to "← #{@prev_report.fiscal_year}", company_financial_report_path(@company, @prev_report),
+          class: "text-sm border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-600" %>
+    <% end %>
+    <%# Exercice suivant %>
+    <% next_report = @company.financial_reports.find_by(fiscal_year: @report.fiscal_year + 1) %>
+    <% if next_report %>
+      <%= link_to "#{next_report.fiscal_year} →", company_financial_report_path(@company, next_report),
+          class: "text-sm border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-600" %>
+    <% end %>
+    <%= link_to "📥 Import", new_company_import_path(@company),
+        class: "text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg font-medium transition-colors" %>
+  </div>
+</div>
+
+<% if is.nil? && bs.nil? %>
+  <div class="bg-amber-50 border border-amber-200 rounded-lg px-5 py-4 text-amber-800 text-sm">
+    Aucune donnée financière disponible pour cet exercice.
+  </div>
+<% else %>
+
+<%# ── KPI CARDS ─────────────────────────────────────────────────────────────── %>
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+  <%
+    kpis = [
+      { label: "Chiffre d'affaires", value: is&.revenue,       prev: prev_is&.revenue,       fmt: :euros },
+      { label: "EBITDA (EBE)",       value: is&.ebitda_calculated, prev: prev_is&.ebitda_calculated, fmt: :euros },
+      { label: "Marge EBIT",         value: is&.ebit_margin,    prev: prev_is&.ebit_margin,   fmt: :pct },
+      { label: "Résultat net",       value: is&.net_income,     prev: prev_is&.net_income,    fmt: :euros },
+      { label: "Capitaux propres",   value: bs&.total_equity,   prev: prev_bs&.total_equity,  fmt: :euros },
+      { label: "Dette nette",        value: bs&.net_financial_debt, prev: prev_bs&.net_financial_debt, fmt: :euros, inverse: true },
+    ]
+  %>
+  <% kpis.each do |kpi| %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+      <p class="text-xs text-gray-500 leading-tight mb-1"><%= kpi[:label] %></p>
+      <p class="text-lg font-bold text-gray-900">
+        <%= kpi[:fmt] == :pct ? pct(kpi[:value]) : euros(kpi[:value]) %>
+      </p>
+      <% if kpi[:prev] && kpi[:value] && kpi[:prev] != 0 %>
+        <% delta = (kpi[:value] - kpi[:prev]) / kpi[:prev].abs * 100 rescue nil %>
+        <% good = kpi[:inverse] ? delta < 0 : delta > 0 %>
+        <p class="text-xs mt-0.5 <%= good ? 'text-emerald-600' : 'text-rose-600' %>">
+          <%= delta > 0 ? "▲" : "▼" %> <%= number_with_precision(delta.abs, precision: 1) %>% vs N-1
+        </p>
+      <% end %>
+    </div>
+  <% end %>
+</div>
+
+<%# ── SIG + BILAN ────────────────────────────────────────────────────────────── %>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+<%# SIG %>
+<% if is %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+    <h2 class="font-semibold text-gray-800">Soldes Intermédiaires de Gestion</h2>
+    <span class="text-xs text-gray-400">format <%= @report.income_format %></span>
+  </div>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="px-5 py-2 text-left text-xs text-gray-500">Poste</th>
+        <th class="px-4 py-2 text-right text-xs text-gray-500"><%= @report.fiscal_year %></th>
+        <% if prev_is %><th class="px-4 py-2 text-right text-xs text-gray-400"><%= @prev_report.fiscal_year %></th><% end %>
+        <th class="px-4 py-2 text-right text-xs text-gray-400">% CA</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-50">
+      <%
+        sig_rows = [
+          { label: "Ventes marchandises",      val: is.merchandise_sales, prev: prev_is&.merchandise_sales, indent: 0 },
+          { label: "− Coût d'achat march.",     val: is.merchandise_purchases && is.merchandise_stock_variation ? (is.merchandise_purchases + is.merchandise_stock_variation) : nil,
+                                               prev: prev_is&.merchandise_purchases && prev_is&.merchandise_stock_variation ? (prev_is.merchandise_purchases + prev_is.merchandise_stock_variation) : nil, indent: 1 },
+          { label: "= Marge commerciale",       val: is.commercial_margin_calculated, prev: prev_is&.commercial_margin_calculated, indent: 0, bold: true, sep: true },
+          { label: "+ Production vendue",       val: is.production_sold,   prev: prev_is&.production_sold,   indent: 1 },
+          { label: "− Autres charges externes", val: is.other_external_expenses, prev: prev_is&.other_external_expenses, indent: 1 },
+          { label: "= Valeur Ajoutée",          val: is.value_added_calculated, prev: prev_is&.value_added_calculated, indent: 0, bold: true, sep: true },
+          { label: "+ Subventions exploit.",    val: is.operating_subsidies, prev: prev_is&.operating_subsidies, indent: 1 },
+          { label: "− Charges de personnel",    val: is.personnel_expenses,  prev: prev_is&.personnel_expenses, indent: 1 },
+          { label: "− Impôts et taxes",         val: is.taxes_and_duties,    prev: prev_is&.taxes_and_duties,   indent: 1 },
+          { label: "= EBE (EBITDA)",            val: is.ebitda_calculated,   prev: prev_is&.ebitda_calculated,  indent: 0, bold: true, sep: true },
+          { label: "− Dotations amort.",        val: is.depreciation_amortization, prev: prev_is&.depreciation_amortization, indent: 1 },
+          { label: "= EBIT",                    val: is.ebit,                prev: prev_is&.ebit,               indent: 0, bold: true, sep: true },
+          { label: "+/− Résultat financier",    val: is.result_financier,    prev: prev_is&.result_financier,   indent: 1 },
+          { label: "+/− Résultat exceptionnel", val: is.exceptional_income.to_f - is.exceptional_expenses.to_f, prev: nil, indent: 1 },
+          { label: "− IS",                      val: is.income_tax,          prev: prev_is&.income_tax,         indent: 1 },
+          { label: "= Résultat net",            val: is.net_income,          prev: prev_is&.net_income,         indent: 0, bold: true, sep: true },
+        ]
+      %>
+      <% sig_rows.each do |row| %>
+        <% next if row[:val].nil? && row[:prev].nil? %>
+        <tr class="<%= row[:sep] ? 'bg-indigo-50/60' : 'hover:bg-gray-50' %>">
+          <td class="px-5 py-2 <%= row[:indent] == 1 ? 'pl-8 text-gray-500 text-xs' : 'text-gray-800' %> <%= row[:bold] ? 'font-semibold' : '' %>">
+            <%= row[:label] %>
+          </td>
+          <td class="px-4 py-2 text-right font-mono <%= row[:bold] ? 'font-semibold text-gray-900' : 'text-gray-700' %>">
+            <%= euros(row[:val]) %>
+          </td>
+          <% if prev_is %>
+            <td class="px-4 py-2 text-right font-mono text-gray-400 text-xs"><%= euros(row[:prev]) %></td>
+          <% end %>
+          <td class="px-4 py-2 text-right text-xs text-gray-400">
+            <% if row[:val] && is.revenue&.positive? %>
+              <%= pct(row[:val] / is.revenue) %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<% end %>
+
+<%# BILAN SIMPLIFIÉ %>
+<% if bs %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-semibold text-gray-800">Bilan simplifié</h2>
+  </div>
+  <div class="grid grid-cols-2 divide-x divide-gray-100">
+    <div>
+      <div class="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">ACTIF</div>
+      <table class="w-full text-sm">
+        <tbody class="divide-y divide-gray-50">
+          <% [
+            ["Immob. nettes",    bs.total_fixed_assets_net, false],
+            ["  Fonds commercial", bs.goodwill,             true],
+            ["  Incorporelles",   bs.intangible_assets_net, true],
+            ["  Corporelles",     bs.tangible_assets_net,   true],
+            ["  Financières",     bs.financial_assets_net,  true],
+            ["Stocks",           bs.total_inventory,        false],
+            ["Clients",          bs.trade_receivables,      false],
+            ["Avances versées",  bs.customer_advances_paid, false],
+            ["Autres créances",  bs.other_operating_receivables, false],
+            ["Ch. constatées",   bs.prepaid_expenses,       false],
+            ["VMP",              bs.short_term_investments, false],
+            ["Trésorerie",       bs.cash_and_equivalents,   false],
+            ["Total actif",      bs.total_assets,           false],
+          ].each do |label, val, indent| %>
+            <% next if val.nil? || val.zero? %>
+            <tr class="<%= label.start_with?('Total') ? 'bg-gray-50 font-semibold border-t-2 border-gray-300' : '' %>">
+              <td class="px-4 py-1.5 <%= indent ? 'pl-6 text-gray-400 text-xs' : 'text-gray-700 text-sm' %>"><%= label %></td>
+              <td class="px-3 py-1.5 text-right font-mono text-xs text-gray-600 <%= label.start_with?('Total') ? 'font-semibold text-gray-900' : '' %>"><%= euros(val) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <div class="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">PASSIF</div>
+      <table class="w-full text-sm">
+        <tbody class="divide-y divide-gray-50">
+          <% [
+            ["Capital",           bs.share_capital,                    false],
+            ["Primes",            bs.share_premium,                    false],
+            ["Réserves",          bs.reserves,                         false],
+            ["Report à nouveau",  bs.retained_earnings_bf,             false],
+            ["Résultat net",      bs.net_income_period,                false],
+            ["Capitaux propres",  bs.total_equity,                     false],
+            ["Dettes financières",(bs.lt_financial_debt.to_f + bs.st_financial_debt.to_f), false],
+            ["Fournisseurs",      bs.trade_payables,                   false],
+            ["Dettes fisc./soc.", bs.tax_and_social_liabilities,       false],
+            ["Autres dettes CT",  bs.other_operating_liabilities,      false],
+            ["Total passif",      bs.total_equity_and_liabilities,     false],
+          ].each do |label, val, indent| %>
+            <% next if val.nil? || val.zero? %>
+            <tr class="<%= label.include?('propres') ? 'bg-emerald-50/50 font-semibold border-t border-emerald-200' : label.start_with?('Total') ? 'bg-gray-50 font-semibold border-t-2 border-gray-300' : '' %>">
+              <td class="px-4 py-1.5 text-gray-700 text-sm"><%= label %></td>
+              <td class="px-3 py-1.5 text-right font-mono text-xs text-gray-600 <%= (label.include?('propres') || label.start_with?('Total')) ? 'font-semibold text-gray-900' : '' %>"><%= euros(val) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<% end %>
+
+</div><%# /grid SIG + Bilan %>
+
+<%# ── GRAPHIQUES DE STRUCTURE ─────────────────────────────────────────────── %>
+<% if bs %>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h3 class="text-sm font-semibold text-gray-700 mb-3">Structure de l'actif</h3>
+    <canvas id="chartActif" height="230"></canvas>
+  </div>
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h3 class="text-sm font-semibold text-gray-700 mb-3">Structure du passif</h3>
+    <canvas id="chartPassif" height="230"></canvas>
+  </div>
+  <% if is&.value_added_calculated&.positive? %>
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h3 class="text-sm font-semibold text-gray-700 mb-3">Partage de la Valeur Ajoutée</h3>
+    <canvas id="chartVA" height="230"></canvas>
+  </div>
+  <% end %>
+</div>
+
+<script>
+document.addEventListener("turbo:load", function() {
+  const COLORS = ['#6366f1','#10b981','#f59e0b','#f43f5e','#0ea5e9','#8b5cf6','#64748b'];
+  const dOpts = {
+    responsive: true,
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 10 } } },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${(ctx.raw/1000).toFixed(0)} k€` } }
+    }
+  };
+
+  // Actif
+  new Chart(document.getElementById('chartActif'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Immobilisations', 'Stocks', 'Créances clients', 'Trésorerie/VMP', 'Autres'],
+      datasets: [{
+        data: [
+          <%= bs.total_fixed_assets_net.to_f.round(0) %>,
+          <%= bs.total_inventory.to_f.round(0) %>,
+          <%= bs.trade_receivables.to_f.round(0) %>,
+          <%= (bs.cash_and_equivalents.to_f + bs.short_term_investments.to_f).round(0) %>,
+          <%= ((bs.other_operating_receivables.to_f) + (bs.customer_advances_paid.to_f) + (bs.prepaid_expenses.to_f)).round(0) %>
+        ],
+        backgroundColor: COLORS,
+        borderWidth: 2, borderColor: '#fff'
+      }]
+    },
+    options: dOpts
+  });
+
+  // Passif
+  new Chart(document.getElementById('chartPassif'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Capitaux propres', 'Dettes financières', 'Fournisseurs', 'Dettes fisc./soc.', 'Autres CT'],
+      datasets: [{
+        data: [
+          <%= bs.total_equity.to_f.round(0) %>,
+          <%= (bs.lt_financial_debt.to_f + bs.st_financial_debt.to_f).round(0) %>,
+          <%= bs.trade_payables.to_f.round(0) %>,
+          <%= bs.tax_and_social_liabilities.to_f.round(0) %>,
+          <%= bs.other_operating_liabilities.to_f.round(0) %>
+        ],
+        backgroundColor: COLORS,
+        borderWidth: 2, borderColor: '#fff'
+      }]
+    },
+    options: dOpts
+  });
+
+  <% if is&.value_added_calculated&.positive? %>
+  <% sharing = @report.va_sharing %>
+  // Partage VA
+  new Chart(document.getElementById('chartVA'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Personnel', 'État (IS+taxes)', 'Investissement', 'Entreprise'],
+      datasets: [{
+        data: [
+          <%= sharing[:personnel]&.last.to_f.round(0) %>,
+          <%= sharing[:etat]&.last.to_f.round(0) %>,
+          <%= sharing[:investissement]&.last.to_f.round(0) %>,
+          <%= sharing[:entreprise]&.last.to_f.round(0) %>
+        ],
+        backgroundColor: ['#6366f1','#f43f5e','#f59e0b','#10b981'],
+        borderWidth: 2, borderColor: '#fff'
+      }]
+    },
+    options: {
+      ...dOpts,
+      plugins: { ...dOpts.plugins, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${(ctx.raw/1000).toFixed(0)} k€ (${(ctx.parsed/(<%=is.value_added_calculated.to_f.round(0)%>/100)).toFixed(1)}%)` } } }
+    }
+  });
+  <% end %>
+});
+</script>
+<% end %>
+
+<%# ── RENTABILITÉ — DÉCOMPOSITION ─────────────────────────────────────────── %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-semibold text-gray-800">Analyse de la rentabilité</h2>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+
+    <%# Décomposition Re = Marge × Rotation %>
+    <div class="px-6 py-5">
+      <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-3">Décomposition de Re</p>
+      <p class="text-xs text-gray-400 mb-3">Re = Marge EBIT(1−t) × Rotation actif éco.</p>
+      <% re = @report.economic_return; marg = @report.ebit_margin_after_tax; rot = @report.economic_rotation %>
+      <div class="space-y-2">
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-gray-600">Marge EBIT(1−t)</span>
+          <span class="font-mono font-semibold text-gray-900"><%= pct(marg) %></span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-gray-600">Rotation économique</span>
+          <span class="font-mono font-semibold text-gray-900"><%= rot ? "#{number_with_precision(rot, precision: 2)}×" : "—" %></span>
+        </div>
+        <div class="flex justify-between items-center pt-2 border-t border-gray-100">
+          <span class="text-sm font-semibold text-gray-800">Re (rentabilité éco.)</span>
+          <span class="font-mono font-bold text-indigo-700 text-base"><%= pct(re) %></span>
+        </div>
+        <% if prev_is && @prev_report %>
+          <p class="text-xs text-gray-400">N-1 : <%= pct(@prev_report.economic_return) %></p>
+        <% end %>
+      </div>
+    </div>
+
+    <%# Effet de levier %>
+    <div class="px-6 py-5">
+      <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-3">Effet de levier</p>
+      <p class="text-xs text-gray-400 mb-3">Rcp = Re + (Re − i) × D/CP</p>
+      <% nd = bs&.net_financial_debt; cp = bs&.total_equity; rcp = @report.return_on_equity %>
+      <div class="space-y-2">
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-gray-600">Re (rentabilité éco.)</span>
+          <span class="font-mono font-semibold"><%= pct(re) %></span>
+        </div>
+        <% if nd && cp&.positive? %>
+          <div class="flex justify-between items-center">
+            <span class="text-sm text-gray-600">Dette nette / CP</span>
+            <span class="font-mono font-semibold <%= nd < 0 ? 'text-emerald-600' : '' %>">
+              <%= nd < 0 ? "Tréso. nette" : "#{number_with_precision(nd/cp, precision: 2)}×" %>
+            </span>
+          </div>
+        <% end %>
+        <div class="flex justify-between items-center pt-2 border-t border-gray-100">
+          <span class="text-sm font-semibold text-gray-800">Rcp (ROE)</span>
+          <span class="font-mono font-bold text-indigo-700 text-base"><%= pct(rcp) %></span>
+        </div>
+        <% if re && rcp %>
+          <% diff = rcp - re %>
+          <p class="text-xs <%= diff > 0 ? 'text-emerald-600' : 'text-rose-600' %>">
+            Effet de levier : <%= diff > 0 ? "+" : "" %><%= pct(diff) %>
+            <%= diff > 0 ? "(levier positif ✓)" : "(levier négatif ⚠)" %>
+          </p>
+        <% end %>
+      </div>
+    </div>
+
+    <%# Partage de la VA %>
+    <% if is&.value_added_calculated&.positive? %>
+    <div class="px-6 py-5">
+      <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-3">Partage de la VA</p>
+      <p class="text-xs text-gray-400 mb-3">VA = <%= euros(is.value_added_calculated) %></p>
+      <% sharing = @report.va_sharing %>
+      <% [
+        ["Personnel",     sharing[:personnel],     "text-indigo-600"],
+        ["État (IS+taxes)", sharing[:etat],        "text-rose-600"],
+        ["Investissement", sharing[:investissement],"text-amber-600"],
+        ["Entreprise (RN)", sharing[:entreprise],  "text-emerald-600"],
+      ].each do |label, data, color| %>
+        <% next unless data %>
+        <div class="flex justify-between items-center py-1">
+          <span class="text-xs text-gray-600"><%= label %></span>
+          <div class="text-right">
+            <span class="font-mono text-xs text-gray-700"><%= euros(data[1]) %></span>
+            <span class="ml-2 text-xs font-semibold <%= color %>"><%= pct(data[0]) %></span>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    <% else %>
+    <div class="px-6 py-5 text-sm text-gray-400 flex items-center justify-center">
+      Données VA non disponibles
+    </div>
+    <% end %>
+
+  </div>
+</div>
+
+<%# ── RATIOS D'ANALYSE ────────────────────────────────────────────────────── %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-semibold text-gray-800">Ratios financiers</h2>
+  </div>
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-0 divide-x divide-y divide-gray-100">
+    <%
+      ratios_data = [
+        { label: "Re (rentabilité éco.)",  val: @report.economic_return,            fmt: :pct,   norme: "> 10 %", good: ->(v){ v >= 0.10 } },
+        { label: "Rcp (ROE)",               val: @report.return_on_equity,           fmt: :pct,   norme: "> Re",   good: ->(v){ re && v >= re } },
+        { label: "ROA",                     val: @report.return_on_assets,           fmt: :pct,   norme: nil,      good: nil },
+        { label: "Couverture intérêts",     val: @report.interest_coverage_ratio,    fmt: :ratio, norme: "> 3×",   good: ->(v){ v >= 3 } },
+        { label: "Dettes nettes/EBITDA",    val: @report.debt_ratio,                 fmt: :ratio, norme: "< 3×",   good: ->(v){ v < 3 } },
+        { label: "Autonomie financière",    val: bs&.financial_autonomy_ratio,       fmt: :pct,   norme: "> 33 %", good: ->(v){ v >= 0.33 } },
+        { label: "Levier financier",        val: bs&.financial_leverage,             fmt: :ratio, norme: "< 1×",   good: ->(v){ v < 1 } },
+        { label: "Liquidité générale",      val: bs&.general_liquidity_ratio,        fmt: :ratio, norme: "> 1",    good: ->(v){ v >= 1 } },
+        { label: "Liquidité réduite",       val: bs&.reduced_liquidity_ratio,        fmt: :ratio, norme: "> 0,8",  good: ->(v){ v >= 0.8 } },
+        { label: "Liquidité immédiate",     val: bs&.immediate_liquidity_ratio,      fmt: :ratio, norme: "> 0,2",  good: ->(v){ v >= 0.2 } },
+        { label: "État outil industriel",   val: bs&.industrial_tool_ratio,          fmt: :pct,   norme: nil,      good: nil },
+        { label: "Intensité capitalistique",val: @report.capital_intensity,          fmt: :ratio, norme: nil,      good: nil },
+      ]
+    %>
+    <% ratios_data.each do |r| %>
+      <% is_good = r[:good] && r[:val] ? r[:good].call(r[:val]) : nil %>
+      <div class="px-5 py-4">
+        <p class="text-xs text-gray-500 mb-1"><%= r[:label] %></p>
+        <p class="text-xl font-bold <%= is_good == true ? 'text-emerald-700' : is_good == false ? 'text-rose-700' : 'text-gray-900' %>">
+          <% case r[:fmt]
+             when :pct   then %><%= pct(r[:val]) %><%
+             when :ratio then %><%= ratio(r[:val]) %><%
+             end %>
+        </p>
+        <% if r[:norme] %>
+          <p class="text-xs text-gray-400 mt-0.5">norme : <%= r[:norme] %></p>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<%# ── CYCLES DE ROTATION / BFR ──────────────────────────────────────────── %>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+<% if bs %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-semibold text-gray-800">Cycles de rotation (BFR)</h2>
+  </div>
+  <div class="grid grid-cols-2 divide-x divide-gray-100">
+    <div class="px-6 py-4">
+      <p class="text-xs text-gray-500 uppercase font-medium mb-3">Actif d'exploitation</p>
+      <% [
+        ["Stocks", bs.total_inventory],
+        ["Clients", bs.trade_receivables],
+        ["Avances versées", bs.customer_advances_paid],
+        ["Autres créances", bs.other_operating_receivables],
+        ["Ch. constatées d'avance", bs.prepaid_expenses],
+      ].each do |label, val| %>
+        <% next unless val&.positive? %>
+        <div class="flex justify-between text-sm py-1">
+          <span class="text-gray-600"><%= label %></span>
+          <span class="font-mono text-gray-800"><%= euros(val) %></span>
+        </div>
+      <% end %>
+      <div class="border-t border-gray-100 pt-2 mt-2">
+        <div class="flex justify-between text-sm">
+          <span class="font-medium text-gray-700">Total actif exploit.</span>
+          <span class="font-mono font-semibold">
+            <%= euros((bs.total_inventory.to_f + bs.trade_receivables.to_f + bs.customer_advances_paid.to_f + bs.other_operating_receivables.to_f + bs.prepaid_expenses.to_f)) %>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="px-6 py-4">
+      <p class="text-xs text-gray-500 uppercase font-medium mb-3">Passif d'exploitation</p>
+      <% [
+        ["Fournisseurs", bs.trade_payables],
+        ["Avances reçues", bs.customer_advances_received],
+        ["Dettes fiscales/soc.", bs.tax_and_social_liabilities],
+        ["Autres dettes CT", bs.other_operating_liabilities],
+        ["Produits constatés d'av.", bs.deferred_income],
+      ].each do |label, val| %>
+        <% next unless val&.positive? %>
+        <div class="flex justify-between text-sm py-1">
+          <span class="text-gray-600"><%= label %></span>
+          <span class="font-mono text-gray-800"><%= euros(val) %></span>
+        </div>
+      <% end %>
+      <div class="border-t border-gray-100 pt-2 mt-2">
+        <% bfr = bs.working_capital_requirement %>
+        <div class="flex justify-between items-center">
+          <span class="text-sm font-semibold text-gray-800">BFR</span>
+          <span class="font-mono font-bold text-lg <%= bfr&.negative? ? 'text-emerald-600' : 'text-gray-900' %>">
+            <%= euros(bfr) %>
+          </span>
+        </div>
+        <% if is&.revenue&.positive? && bfr %>
+          <p class="text-xs text-gray-400 mt-1">
+            <%= pct(bfr / is.revenue) %> du CA ·
+            <%= @report.wcr_in_days ? "#{number_with_precision(@report.wcr_in_days, precision: 0)} j" : "—" %> TTC
+          </p>
+        <% end %>
+        <% if bfr&.negative? %>
+          <p class="text-xs text-emerald-600 mt-1">BFR négatif : le cycle génère de la trésorerie.</p>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+<% end %>
+
+<%# Durées de rotation %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-semibold text-gray-800">Durées de rotation</h2>
+  </div>
+  <div class="p-5 space-y-5">
+    <%
+      dso  = @report.days_sales_outstanding
+      dio  = @report.days_inventory_outstanding
+      dpo  = @report.days_payable_outstanding
+      ccc  = @report.cash_conversion_cycle
+      rotation_rows = [
+        { label: "DIO — Rotation stocks",        desc: "Stocks / Coût d'achat × 365",   val: dio,  color: "bg-amber-400" },
+        { label: "DSO — Délai clients",           desc: "Clients / CA TTC × 365",         val: dso,  color: "bg-indigo-400" },
+        { label: "DPO — Délai fournisseurs",      desc: "Fourn. / Achats TTC × 365",      val: dpo,  color: "bg-emerald-400" },
+        { label: "CCC — Cycle de trésorerie",     desc: "DSO + DIO − DPO (jours)",        val: ccc,  color: "bg-violet-400" },
+      ]
+    %>
+    <% rotation_rows.each do |row| %>
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <div>
+            <span class="text-sm font-medium text-gray-700"><%= row[:label] %></span>
+            <span class="text-xs text-gray-400 ml-2"><%= row[:desc] %></span>
+          </div>
+          <span class="font-mono font-bold text-gray-900">
+            <%= row[:val] ? "#{number_with_precision(row[:val], precision: 0)} j" : "—" %>
+          </span>
+        </div>
+        <% if row[:val] && row[:val] > 0 %>
+          <% pct_width = [row[:val].to_f / 120 * 100, 100].min.round %>
+          <div class="h-1.5 rounded-full bg-gray-100">
+            <div class="h-1.5 rounded-full <%= row[:color] %>" style="width: <%= pct_width %>%"></div>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+    <% if ccc %>
+      <p class="text-xs text-gray-400 pt-1 border-t border-gray-100">
+        <% if ccc <= 0 %>
+          CCC ≤ 0 : les fournisseurs financent le cycle d'exploitation — très favorable.
+        <% elsif ccc <= 30 %>
+          CCC ≤ 30 j : cycle court, bonne gestion du BFR.
+        <% else %>
+          CCC <%= number_with_precision(ccc, precision: 0) %> j : besoin de financement du cycle d'exploitation.
+        <% end %>
+      </p>
+    <% end %>
+  </div>
+</div>
+
+</div><%# /grid cycles + rotations %>
+
+<%# ── POINT MORT (si cost_structures renseignées) ─────────────────────────── %>
+<% if @report.cost_structures.any? %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-semibold text-gray-800">Analyse du point mort</h2>
+  </div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-0 divide-x divide-gray-100">
+    <% bep = @report.break_even_point; bep_dist = @report.break_even_distance; ol = @report.operating_leverage %>
+    <div class="px-6 py-5">
+      <p class="text-xs text-gray-500 mb-1">Charges fixes totales</p>
+      <p class="text-xl font-bold text-gray-900"><%= euros(@report.total_fixed_costs) %></p>
+    </div>
+    <div class="px-6 py-5">
+      <p class="text-xs text-gray-500 mb-1">Taux MCV</p>
+      <p class="text-xl font-bold text-gray-900"><%= pct(@report.variable_margin_rate) %></p>
+      <p class="text-xs text-gray-400">MCV / CA</p>
+    </div>
+    <div class="px-6 py-5">
+      <p class="text-xs text-gray-500 mb-1">Point mort</p>
+      <p class="text-xl font-bold text-gray-900"><%= euros(bep) %></p>
+      <% if is&.revenue && bep %>
+        <% atteint = is.revenue >= bep %>
+        <p class="text-xs <%= atteint ? 'text-emerald-600' : 'text-rose-600' %> mt-1">
+          <%= atteint ? "✓ CA > point mort" : "⚠ CA < point mort" %>
+        </p>
+      <% end %>
+    </div>
+    <div class="px-6 py-5">
+      <p class="text-xs text-gray-500 mb-1">Levier opérationnel</p>
+      <p class="text-xl font-bold text-gray-900"><%= ol ? "#{number_with_precision(ol, precision: 2)}×" : "—" %></p>
+      <p class="text-xs text-gray-400">Sensibilité résultat / CA</p>
+    </div>
+  </div>
+  <% if bep_dist %>
+    <div class="px-6 py-3 border-t border-gray-100 bg-gray-50 flex items-center gap-3">
+      <div class="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+        <div class="h-3 rounded-full <%= bep_dist > 0 ? 'bg-emerald-400' : 'bg-rose-400' %>"
+             style="width: <%= [bep_dist.abs * 100, 100].min.round %>%"></div>
+      </div>
+      <span class="text-sm font-semibold <%= bep_dist > 0 ? 'text-emerald-700' : 'text-rose-700' %>">
+        Marge de sécurité : <%= bep_dist >= 0 ? "+" : "" %><%= number_with_precision(bep_dist * 100, precision: 1) %> %
+      </span>
+    </div>
+  <% end %>
+</div>
+<% end %>
+
+<% end %><%# /if is || bs %>

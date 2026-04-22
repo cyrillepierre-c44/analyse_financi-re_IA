@@ -1,0 +1,304 @@
+<% content_for :title, "#{@company.name} — Analyse Financière IA" %>
+
+<div class="mb-6">
+  <%= link_to "← Sociétés", companies_path, class: "text-sm text-indigo-600 hover:underline" %>
+</div>
+
+<div class="flex items-start justify-between mb-8">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900"><%= @company.name %></h1>
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-gray-500">
+      <% if @company.siren.present? %>
+        <span>SIREN <%= @company.siren %></span><span class="text-gray-300">·</span>
+      <% end %>
+      <% if @company.sector.present? %>
+        <span><%= @company.sector %></span><span class="text-gray-300">·</span>
+      <% end %>
+      <span class="uppercase font-medium text-indigo-600"><%= @company.accounting_standard %></span>
+      <% if @company.is_consolidated? %>
+        <span class="bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded-full">Consolidé</span>
+      <% end %>
+      <% if @company.financial_reports.count >= 2 %>
+        <span class="text-gray-300">·</span>
+        <% tcam = @company.cagr_revenue %>
+        <% if tcam %>
+          <span class="text-xs font-semibold <%= tcam >= 0 ? 'text-emerald-600' : 'text-rose-600' %>">
+            TCAM CA <%= tcam >= 0 ? "+" : "" %><%= number_with_precision(tcam * 100, precision: 1) %>%/an
+          </span>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <%= link_to "📥 Importer un PDF", new_company_import_path(@company),
+        class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors" %>
+    <%= button_to "Supprimer", company_path(@company), method: :delete,
+        form: { data: { turbo_confirm: "Supprimer « #{@company.name} » et toutes ses données financières ? Cette action est irréversible." } },
+        class: "text-xs text-rose-500 hover:text-rose-700 border border-rose-200 hover:border-rose-400 px-3 py-2 rounded-lg transition-colors cursor-pointer bg-white" %>
+  </div>
+</div>
+
+<% if @reports.empty? %>
+  <div class="text-center py-16 text-gray-400">
+    <p class="text-4xl mb-3">📋</p>
+    <p class="font-medium">Aucun exercice enregistré</p>
+    <%= link_to "Importer un premier PDF", new_company_import_path(@company),
+        class: "inline-block mt-3 text-sm text-indigo-600 hover:underline" %>
+  </div>
+<% else %>
+
+<%# ── GRAPHIQUES MULTI-ANNÉES ─────────────────────────────────────────────── %>
+<% if @reports.size >= 1 %>
+  <%
+    years  = @reports.map(&:fiscal_year)
+    ca     = @reports.map { |r| r.income_statement&.revenue&.to_f || 0 }
+    ebit_v = @reports.map { |r| r.income_statement&.ebit&.to_f    || 0 }
+    rn_v   = @reports.map { |r| r.income_statement&.net_income&.to_f || 0 }
+    cp_v   = @reports.map { |r| r.balance_sheet&.total_equity&.to_f || 0 }
+    dettes = @reports.map { |r| ((r.balance_sheet&.lt_financial_debt || 0) + (r.balance_sheet&.st_financial_debt || 0)).to_f }
+    marge_ebit = @reports.map { |r| (r.income_statement&.ebit_margin.to_f * 100).round(1) }
+    marge_nette = @reports.map { |r| (r.income_statement&.net_margin.to_f * 100).round(1) }
+    ebe_marge = @reports.map { |r| (r.income_statement&.ebitda_margin.to_f * 100).round(1) }
+  %>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
+
+    <%# Graphique 1 : CA / EBIT / Résultat net %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Évolution des résultats (€)</h3>
+      <canvas id="chartResultats" height="200"></canvas>
+    </div>
+
+    <%# Graphique 2 : Marges %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Évolution des marges (%)</h3>
+      <canvas id="chartMarges" height="200"></canvas>
+    </div>
+
+    <%# Graphique 3 : Structure financière %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Structure financière (€)</h3>
+      <canvas id="chartStructure" height="200"></canvas>
+    </div>
+
+    <%# Graphique 4 : Re / Rcp %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Rentabilité (%)</h3>
+      <canvas id="chartRentabilite" height="200"></canvas>
+    </div>
+  </div>
+
+  <script>
+  document.addEventListener("turbo:load", function() {
+    const years = <%= raw years.to_json %>;
+    const colors = {
+      indigo:  '#6366f1', indigoBg: 'rgba(99,102,241,0.15)',
+      violet:  '#8b5cf6', violetBg: 'rgba(139,92,246,0.15)',
+      emerald: '#10b981', emeraldBg: 'rgba(16,185,129,0.15)',
+      sky:     '#0ea5e9', skyBg:    'rgba(14,165,233,0.15)',
+      rose:    '#f43f5e', roseBg:   'rgba(244,63,94,0.15)',
+      amber:   '#f59e0b', amberBg:  'rgba(245,158,11,0.15)',
+    };
+    const opts = {
+      responsive: true,
+      plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { grid: { color: '#f3f4f6' }, ticks: { font: { size: 11 } } }
+      }
+    };
+
+    // Graphique 1 : Résultats
+    new Chart(document.getElementById('chartResultats'), {
+      type: 'bar',
+      data: {
+        labels: years,
+        datasets: [
+          { label: "Chiffre d'affaires", data: <%= raw ca.to_json %>, backgroundColor: colors.indigoBg, borderColor: colors.indigo, borderWidth: 2, borderRadius: 4 },
+          { label: 'EBIT', data: <%= raw ebit_v.to_json %>, backgroundColor: colors.violetBg, borderColor: colors.violet, borderWidth: 2, borderRadius: 4 },
+          { label: 'Résultat net', data: <%= raw rn_v.to_json %>, backgroundColor: colors.emeraldBg, borderColor: colors.emerald, borderWidth: 2, borderRadius: 4 },
+        ]
+      },
+      options: opts
+    });
+
+    // Graphique 2 : Marges
+    new Chart(document.getElementById('chartMarges'), {
+      type: 'line',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'Marge EBITDA %', data: <%= raw ebe_marge.to_json %>, borderColor: colors.violet, backgroundColor: colors.violetBg, fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'Marge EBIT %',   data: <%= raw marge_ebit.to_json %>, borderColor: colors.indigo, backgroundColor: colors.indigoBg, fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'Marge nette %',  data: <%= raw marge_nette.to_json %>, borderColor: colors.emerald, backgroundColor: colors.emeraldBg, fill: true, tension: 0.3, pointRadius: 5 },
+        ]
+      },
+      options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, ticks: { callback: v => v + ' %', font: { size: 11 } } } } }
+    });
+
+    // Graphique 3 : Structure financière
+    new Chart(document.getElementById('chartStructure'), {
+      type: 'bar',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'Capitaux propres', data: <%= raw cp_v.to_json %>, backgroundColor: colors.emeraldBg, borderColor: colors.emerald, borderWidth: 2, borderRadius: 4 },
+          { label: 'Dettes financières', data: <%= raw dettes.to_json %>, backgroundColor: colors.roseBg, borderColor: colors.rose, borderWidth: 2, borderRadius: 4 },
+        ]
+      },
+      options: opts
+    });
+
+    // Graphique 4 : Rentabilité
+    const reData    = <%= raw @reports.map { |r| (r.economic_return.to_f * 100).round(1) }.to_json %>;
+    const rcpData   = <%= raw @reports.map { |r| (r.return_on_equity.to_f * 100).round(1) }.to_json %>;
+    const roaData   = <%= raw @reports.map { |r| (r.return_on_assets.to_f * 100).round(1) }.to_json %>;
+    new Chart(document.getElementById('chartRentabilite'), {
+      type: 'line',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'Re (éco.)', data: reData,  borderColor: colors.indigo,  backgroundColor: colors.indigoBg,  fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'Rcp (CP)',  data: rcpData, borderColor: colors.violet,  backgroundColor: colors.violetBg,  fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'ROA',       data: roaData, borderColor: colors.emerald, backgroundColor: colors.emeraldBg, fill: true, tension: 0.3, pointRadius: 5 },
+        ]
+      },
+      options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, ticks: { callback: v => v + ' %', font: { size: 11 } } } } }
+    });
+  });
+  </script>
+<% end %>
+
+<%# ── TABLEAU COMPARATIF ───────────────────────────────────────────────────── %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
+  <div class="px-6 py-4 border-b border-gray-100">
+    <h2 class="font-semibold text-gray-800">Comparatif pluriannuel</h2>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+        <tr>
+          <th class="px-6 py-3 text-left">Indicateur</th>
+          <% @reports.each do |r| %>
+            <th class="px-4 py-3 text-right"><%= r.fiscal_year %></th>
+          <% end %>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        <% [
+          ["Chiffre d'affaires",       ->(r){ r.income_statement&.revenue },          :euros],
+          ["Marge commerciale",         ->(r){ r.income_statement&.commercial_margin_calculated }, :euros],
+          ["Valeur Ajoutée",            ->(r){ r.income_statement&.value_added_calculated }, :euros],
+          ["EBE (EBITDA)",              ->(r){ r.income_statement&.ebitda_calculated },  :euros],
+          ["EBIT",                      ->(r){ r.income_statement&.ebit },               :euros],
+          ["Marge EBIT",                ->(r){ r.income_statement&.ebit_margin },         :pct],
+          ["Résultat net",              ->(r){ r.income_statement&.net_income },          :euros],
+          ["Marge nette",               ->(r){ r.income_statement&.net_margin },          :pct],
+          ["Capitaux propres",          ->(r){ r.balance_sheet&.total_equity },           :euros],
+          ["BFR",                       ->(r){ r.balance_sheet&.working_capital_requirement }, :euros],
+          ["Dette nette",               ->(r){ r.balance_sheet&.net_financial_debt },     :euros],
+          ["Re (EBIT(1-t)/Actif éco.)", ->(r){ r.economic_return },                       :pct],
+          ["Rcp (RN/CP)",               ->(r){ r.return_on_equity },                      :pct],
+          ["Couverture intérêts",        ->(r){ r.interest_coverage_ratio },               :ratio],
+          ["DPO (j. fourn.)",            ->(r){ r.days_payable_outstanding },              :days],
+          ["DSO (j. clients)",           ->(r){ r.days_sales_outstanding },                :days],
+          ["DIO (j. stocks)",            ->(r){ r.days_inventory_outstanding },            :days],
+        ].each do |label, extractor, fmt| %>
+          <tr class="hover:bg-gray-50">
+            <td class="px-6 py-2.5 text-gray-600"><%= label %></td>
+            <% @reports.each do |r| %>
+              <% val = extractor.call(r) %>
+              <td class="px-4 py-2.5 text-right font-mono text-gray-800">
+                <% case fmt
+                   when :euros then %><%= euros(val) %><%
+                   when :pct   then %><%= pct(val) %><%
+                   when :ratio then %><%= ratio(val) %><%
+                   when :days  then %><%= val ? "#{number_with_precision(val, precision: 0)} j" : "—" %><%
+                   end %>
+              </td>
+            <% end %>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%# ── ANALYSE VERBALE IA ──────────────────────────────────────────────────── %>
+<div id="analysis-frame" class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
+  <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-lg">🏦</span>
+      <div>
+        <h2 class="font-semibold text-gray-800">Analyse financière — Avis d'expert</h2>
+        <% if @company.ai_analyzed_at %>
+          <p class="text-xs text-gray-400 mt-0.5">
+            Générée le <%= @company.ai_analyzed_at.strftime("%d/%m/%Y à %H:%M") %>
+          </p>
+        <% else %>
+          <p class="text-xs text-gray-400 mt-0.5">
+            Synthèse narrative GPT-4o · banque / investisseurs / acquéreurs
+          </p>
+        <% end %>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <% if @company.ai_analysis.present? %>
+        <%= form_with url: company_analysis_path(@company), method: :post do |f| %>
+          <%= f.hidden_field :force, value: "1" %>
+          <%= f.submit "↺ Régénérer",
+              class: "text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
+              data: { disable_with: "En cours…" } %>
+        <% end %>
+      <% else %>
+        <%= form_with url: company_analysis_path(@company), method: :post do |f| %>
+          <%= f.submit "✦ Générer l'analyse",
+              class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg cursor-pointer transition-colors shadow-sm",
+              data: { disable_with: "Analyse en cours…" } %>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <% if @company.ai_analysis.present? %>
+    <div class="px-6 py-6 prose prose-sm max-w-none text-gray-700 leading-relaxed analysis-content">
+      <%= render_analysis(@company.ai_analysis) %>
+    </div>
+    <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+      Cette analyse est générée automatiquement par intelligence artificielle à partir des données
+      comptables déclarées. Elle ne constitue pas un conseil en investissement.
+    </div>
+  <% end %>
+</div>
+
+<%# ── CARTES EXERCICES ────────────────────────────────────────────────────── %>
+<h2 class="text-lg font-semibold text-gray-800 mb-4">Accès par exercice</h2>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <% @reports.each do |report| %>
+    <% is = report.income_statement; bs = report.balance_sheet %>
+    <%= link_to company_financial_report_path(@company, report),
+        class: "bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all p-4 group" do %>
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xl font-bold text-gray-900 group-hover:text-indigo-700"><%= report.fiscal_year %></span>
+        <% if is&.net_income %>
+          <span class="text-xs font-semibold <%= is.net_income >= 0 ? 'text-emerald-600' : 'text-rose-600' %>">
+            <%= is.net_income >= 0 ? "▲" : "▼" %> RN
+          </span>
+        <% end %>
+      </div>
+      <% if is %>
+        <div class="space-y-1 text-xs text-gray-600">
+          <div class="flex justify-between"><span>CA</span><span class="font-medium"><%= euros(is.revenue) %></span></div>
+          <div class="flex justify-between"><span>EBIT</span><span class="font-medium"><%= euros(is.ebit) %></span></div>
+          <div class="flex justify-between"><span>Marge EBIT</span><span class="font-medium"><%= pct(is.ebit_margin) %></span></div>
+          <div class="flex justify-between"><span>Résultat net</span><span class="font-medium"><%= euros(is.net_income) %></span></div>
+        </div>
+      <% end %>
+      <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-indigo-600 font-medium">
+        Analyse complète →
+      </div>
+    <% end %>
+  <% end %>
+</div>
+
+<% end %>
