@@ -1,4 +1,20 @@
 module ApplicationHelper
+  # Transforme le markdown simple retourné par le LLM en HTML lisible
+  def render_analysis(text)
+    return "" if text.blank?
+    html = text
+      .gsub(/\*\*(.+?)\*\*/, '<strong>\1</strong>')          # **gras**
+      .gsub(/^#+\s+(.+)$/, '<h3 class="font-semibold text-gray-900 mt-5 mb-2 text-base">\1</h3>')
+      .split(/\n{2,}/)
+      .map do |para|
+        para = para.strip
+        next "" if para.empty?
+        next para if para.start_with?("<h3")
+        "<p class=\"mb-3\">#{para.gsub("\n", " ")}</p>"
+      end
+      .join
+    html.html_safe
+  end
   # Formate un montant en euros : 1 234 567 €
   def euros(amount, unit: "€")
     return "—" if amount.nil?

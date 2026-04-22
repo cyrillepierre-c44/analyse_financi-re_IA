@@ -93,29 +93,36 @@ class FinancialPdfImporter
       #{text.truncate(24_000)}
 
       ## Instructions
+      - Extrais UNIQUEMENT les exercices annuels COMPLETS (12 mois). Ignore les semestres ou périodes partielles.
       - Retourne UNIQUEMENT un bloc JSON valide (pas d'explication).
+      - La clé racine est `"years"` : un tableau avec un objet par exercice fiscal détecté.
       - Utilise `null` pour toute valeur absente ou illisible.
-      - Tous les montants sont en euros (entiers ou décimaux, jamais de symbole).
+      - Retourne les montants EXACTEMENT tels qu'écrits dans le document, sans les convertir.
+      - Si le document indique "En millions d'euros", retourne 305.6 (pas 305600000) et indique `"unit": 1000000` dans meta.
+      - Si le document indique "En milliers d'euros", retourne 305600 et indique `"unit": 1000` dans meta.
+      - Si les montants sont déjà en euros entiers, indique `"unit": 1` dans meta.
       - Les montants négatifs doivent être des nombres négatifs.
-      - Pour `document_type`, identifie parmi : "bilan", "compte_resultat", "tableau_tresorerie", "mixte".
-      - Pour `income_format`, identifie : "nature" ou "fonction".
-      - Pour `period_end_date`, format ISO : "YYYY-MM-DD".
+      - Pour les exercices décalés (ex: avril-mars), fiscal_year = année de clôture (ex: 2024-2025 → fiscal_year: 2025, period_end_date: "2025-03-31").
+      - Pour `income_format` : "nature" (PCG, avec marge commerciale/VA) ou "fonction" (IFRS, avec coût des ventes/marge brute).
+      - Pour les P&L IFRS "fonction", utilise cost_of_sales, gross_margin, distribution_marketing_costs, administrative_costs.
 
       ## Structure JSON attendue
       ```json
       {
-        "meta": {
-          "document_type": "mixte",
-          "income_format": "nature",
-          "fiscal_year": 2023,
-          "period_end_date": "2023-12-31",
-          "accounting_standard": "pcg",
-          "is_consolidated": false,
-          "currency": "EUR",
-          "unit": 1
-        },
-        "income_statement": {
-          "revenue": null,
+        "years": [
+          {
+            "meta": {
+              "document_type": "mixte",
+              "income_format": "nature",
+              "fiscal_year": 2023,
+              "period_end_date": "2023-12-31",
+              "accounting_standard": "pcg",
+              "is_consolidated": false,
+              "currency": "EUR",
+              "unit": 1
+            },
+            "income_statement": {
+              "revenue": null,
           "cost_of_sales": null,
           "gross_margin": null,
           "distribution_marketing_costs": null,
@@ -220,6 +227,8 @@ class FinancialPdfImporter
           "net_debt_closing": null
         },
         "cost_structures": []
+          }
+        ]
       }
       ```
     PROMPT
@@ -227,20 +236,30 @@ class FinancialPdfImporter
 
   # ── 3. SAUVEGARDE EN BASE ─────────────────────────────────────────────
 
+  # Retourne un tableau de FinancialReport (1 par année détectée)
   def save_to_database(data)
-    meta = data["meta"] || {}
-    unit = (meta["unit"] || 1).to_f
+    # Support ancien format (objet unique) ET nouveau format (tableau years)
+    year_entries = if data["years"].is_a?(Array)
+                    data["years"]
+                  else
+                    [ data ]   # rétro-compatibilité : un seul exercice
+                  end
 
+    reports = []
     ActiveRecord::Base.transaction do
-      report = find_or_create_report(meta)
+      year_entries.each do |entry|
+        meta = entry["meta"] || {}
+        unit = (meta["unit"] || 1).to_f
 
-      save_income_statement(report, data["income_statement"], unit)     if data["income_statement"]
-      save_balance_sheet(report, data["balance_sheet"], unit)           if data["balance_sheet"]
-      save_cash_flow_statement(report, data["cash_flow_statement"], unit) if data["cash_flow_statement"]
-      save_cost_structures(report, data["cost_structures"], unit)       if data["cost_structures"]&.any?
-
-      report
+        report = find_or_create_report(meta)
+        save_income_statement(report, entry["income_statement"], unit)       if entry["income_statement"]
+        save_balance_sheet(report, entry["balance_sheet"], unit)             if entry["balance_sheet"]
+        save_cash_flow_statement(report, entry["cash_flow_statement"], unit) if entry["cash_flow_statement"]
+        save_cost_structures(report, entry["cost_structures"], unit)         if entry["cost_structures"]&.any?
+        reports << report
+      end
     end
+    reports
   end
 
   def find_or_create_report(meta)

@@ -8,6 +8,7 @@
   <h1 class="text-2xl font-bold text-gray-900 mb-1">Importer un PDF</h1>
   <p class="text-sm text-gray-500 mb-8">
     Le document sera analysé par GPT-4o qui extraira automatiquement les données financières.
+    Si le PDF contient plusieurs exercices, toutes les années seront importées en une seule fois.
   </p>
 
   <%= form_with url: company_imports_path(@company), method: :post, multipart: true,
@@ -26,7 +27,7 @@
           value: Date.today.year - 1,
           min: 2000, max: 2099,
           class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
-      <p class="text-xs text-gray-400 mt-1">Sera utilisé si le LLM ne trouve pas l'année dans le document.</p>
+      <p class="text-xs text-gray-400 mt-1">Valeur de secours si le LLM ne détecte pas l'année. Ignoré si le PDF contient plusieurs exercices.</p>
     </div>
 
     <div>
@@ -35,9 +36,10 @@
           class: "block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" %>
     </div>
 
-    <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800">
-      <strong>Note :</strong> L'analyse peut prendre 10 à 30 secondes selon la taille du document.
-      Le PDF doit contenir du texte sélectionnable (pas un scan image).
+    <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800 space-y-1">
+      <p><strong>Note :</strong> L'analyse peut prendre 15 à 45 secondes selon la taille du document.</p>
+      <p>Le PDF doit contenir du texte sélectionnable (pas un scan image).</p>
+      <p>Un PDF synthétisant plusieurs années importera automatiquement tous les exercices détectés.</p>
     </div>
 
     <div class="flex gap-3 pt-2">

@@ -29,8 +29,13 @@
       <% end %>
     </div>
   </div>
-  <%= link_to "📥 Importer un PDF", new_company_import_path(@company),
-      class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors" %>
+  <div class="flex items-center gap-2">
+    <%= link_to "📥 Importer un PDF", new_company_import_path(@company),
+        class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors" %>
+    <%= button_to "Supprimer", company_path(@company), method: :delete,
+        form: { data: { turbo_confirm: "Supprimer « #{@company.name} » et toutes ses données financières ? Cette action est irréversible." } },
+        class: "text-xs text-rose-500 hover:text-rose-700 border border-rose-200 hover:border-rose-400 px-3 py-2 rounded-lg transition-colors cursor-pointer bg-white" %>
+  </div>
 </div>
 
 <% if @reports.empty? %>
@@ -217,6 +222,53 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<%# ── ANALYSE VERBALE IA ──────────────────────────────────────────────────── %>
+<div id="analysis-frame" class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
+  <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-lg">🏦</span>
+      <div>
+        <h2 class="font-semibold text-gray-800">Analyse financière — Avis d'expert</h2>
+        <% if @company.ai_analyzed_at %>
+          <p class="text-xs text-gray-400 mt-0.5">
+            Générée le <%= @company.ai_analyzed_at.strftime("%d/%m/%Y à %H:%M") %>
+          </p>
+        <% else %>
+          <p class="text-xs text-gray-400 mt-0.5">
+            Synthèse narrative GPT-4o · banque / investisseurs / acquéreurs
+          </p>
+        <% end %>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <% if @company.ai_analysis.present? %>
+        <%= form_with url: company_analysis_path(@company), method: :post do |f| %>
+          <%= f.hidden_field :force, value: "1" %>
+          <%= f.submit "↺ Régénérer",
+              class: "text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
+              data: { disable_with: "En cours…" } %>
+        <% end %>
+      <% else %>
+        <%= form_with url: company_analysis_path(@company), method: :post do |f| %>
+          <%= f.submit "✦ Générer l'analyse",
+              class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg cursor-pointer transition-colors shadow-sm",
+              data: { disable_with: "Analyse en cours…" } %>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <% if @company.ai_analysis.present? %>
+    <div class="px-6 py-6 prose prose-sm max-w-none text-gray-700 leading-relaxed analysis-content">
+      <%= render_analysis(@company.ai_analysis) %>
+    </div>
+    <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+      Cette analyse est générée automatiquement par intelligence artificielle à partir des données
+      comptables déclarées. Elle ne constitue pas un conseil en investissement.
+    </div>
+  <% end %>
 </div>
 
 <%# ── CARTES EXERCICES ────────────────────────────────────────────────────── %>

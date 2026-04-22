@@ -102,9 +102,9 @@ class FinancialReport < ApplicationRecord
 
   # Délai de règlement clients (DSO) = Clients / CA TTC × 365
   def days_sales_outstanding(vat_rate: 0.20)
-    clients = balance_sheet&.trade_receivables
     revenue = income_statement&.revenue
-    return nil unless clients && revenue&.positive?
+    return nil unless revenue&.positive?
+    clients = balance_sheet&.trade_receivables || 0   # nil = 0 client en fin d'exercice
     clients / (revenue * (1 + vat_rate)) * 365
   end
 

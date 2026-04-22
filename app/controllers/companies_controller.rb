@@ -14,7 +14,38 @@ class CompaniesController < ApplicationController
     @company = Company.new(country: "France", currency: "EUR", accounting_standard: :pcg)
   end
 
+  def destroy
+    @company = Company.find(params[:id])
+    name = @company.name
+    @company.destroy!
+    redirect_to companies_path, notice: "Société « #{name} » supprimée."
+  end
+
   def create
+    # ── Chemin 1 : création depuis un PDF ──────────────────────────────
+    if params[:pdf_file].present?
+      tmp_path = nil
+      begin
+        upload   = params[:pdf_file]
+        tmp_path = Rails.root.join("tmp", "company_#{SecureRandom.hex(8)}_#{upload.original_filename}")
+        File.binwrite(tmp_path, upload.read)
+
+        @company = CompanyPdfImporter.call(pdf_path: tmp_path.to_s)
+
+        years_label = @company.financial_reports.order(:fiscal_year).pluck(:fiscal_year).join(", ")
+        redirect_to @company,
+                    notice: "Société « #{@company.name} » créée depuis le PDF — exercice(s) : #{years_label}."
+      rescue => e
+        @company = Company.new(country: "France", currency: "EUR", accounting_standard: :pcg)
+        flash.now[:alert] = "Erreur lors de l'analyse du PDF : #{e.message}"
+        render :new, status: :unprocessable_entity
+      ensure
+        File.delete(tmp_path) if tmp_path && File.exist?(tmp_path.to_s)
+      end
+      return
+    end
+
+    # ── Chemin 2 : formulaire manuel ───────────────────────────────────
     @company = Company.new(company_params)
     if @company.save
       redirect_to @company, notice: "Société « #{@company.name} » créée avec succès."
