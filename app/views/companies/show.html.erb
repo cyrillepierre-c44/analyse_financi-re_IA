@@ -50,7 +50,7 @@
 <%# ── GRAPHIQUES MULTI-ANNÉES ─────────────────────────────────────────────── %>
 <% if @reports.size >= 1 %>
   <%
-    years  = @reports.map(&:fiscal_year)
+    years  = @reports.map { |r| @company.fiscal_year_label(r.fiscal_year) }
     ca     = @reports.map { |r| r.income_statement&.revenue&.to_f || 0 }
     ebit_v = @reports.map { |r| r.income_statement&.ebit&.to_f    || 0 }
     rn_v   = @reports.map { |r| r.income_statement&.net_income&.to_f || 0 }
@@ -180,14 +180,14 @@
         <tr>
           <th class="px-6 py-3 text-left">Indicateur</th>
           <% @reports.each do |r| %>
-            <th class="px-4 py-3 text-right"><%= r.fiscal_year %></th>
+            <th class="px-4 py-3 text-right"><%= @company.fiscal_year_label(r.fiscal_year) %></th>
           <% end %>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
         <% [
           ["Chiffre d'affaires",       ->(r){ r.income_statement&.revenue },          :euros],
-          ["Marge commerciale",         ->(r){ r.income_statement&.commercial_margin_calculated }, :euros],
+          ["Marge brute",               ->(r){ r.income_statement&.gross_margin || r.income_statement&.commercial_margin_calculated }, :euros],
           ["Valeur Ajoutée",            ->(r){ r.income_statement&.value_added_calculated }, :euros],
           ["EBE (EBITDA)",              ->(r){ r.income_statement&.ebitda_calculated },  :euros],
           ["EBIT",                      ->(r){ r.income_statement&.ebit },               :euros],
@@ -223,6 +223,11 @@
     </table>
   </div>
 </div>
+
+<%# ── DIAGNOSTIC Q&A ─────────────────────────────────────────────────────── %>
+<% if Question.any? %>
+  <%= render "companies/qa_section", company: @company %>
+<% end %>
 
 <%# ── ANALYSE VERBALE IA ──────────────────────────────────────────────────── %>
 <div id="analysis-frame" class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
@@ -279,7 +284,7 @@
     <%= link_to company_financial_report_path(@company, report),
         class: "bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all p-4 group" do %>
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xl font-bold text-gray-900 group-hover:text-indigo-700"><%= report.fiscal_year %></span>
+        <span class="text-xl font-bold text-gray-900 group-hover:text-indigo-700"><%= @company.fiscal_year_label(report.fiscal_year) %></span>
         <% if is&.net_income %>
           <span class="text-xs font-semibold <%= is.net_income >= 0 ? 'text-emerald-600' : 'text-rose-600' %>">
             <%= is.net_income >= 0 ? "▲" : "▼" %> RN

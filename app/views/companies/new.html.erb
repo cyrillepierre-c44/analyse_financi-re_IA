@@ -115,12 +115,21 @@
           <%= f.text_field :currency,
               class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none" %>
         </div>
-        <div class="flex items-center pt-6">
-          <%= f.check_box :is_consolidated,
-              class: "w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-300" %>
-          <%= f.label :is_consolidated, "Comptes consolidés",
-              class: "ml-2 text-sm text-gray-700" %>
+        <div>
+          <%= f.label :fiscal_year_end_month, "Clôture de l'exercice", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.select :fiscal_year_end_month,
+              Date::MONTHNAMES.each_with_index.drop(1).map { |name, i| [name, i] },
+              { selected: f.object.fiscal_year_end_month || 12 },
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none bg-white" %>
+          <p class="text-xs text-gray-400 mt-1">Ex : mars = 31/03, décembre = 31/12</p>
         </div>
+      </div>
+
+      <div class="flex items-center">
+        <%= f.check_box :is_consolidated,
+            class: "w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-300" %>
+        <%= f.label :is_consolidated, "Comptes consolidés",
+            class: "ml-2 text-sm text-gray-700" %>
       </div>
 
       <div class="flex gap-3 pt-2">

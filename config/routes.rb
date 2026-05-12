@@ -5,6 +5,8 @@ Rails.application.routes.draw do
     resources :financial_reports, only: [ :show ]
     resources :imports,           only: [ :new, :create ]
     resource  :analysis,          only: [ :create ]
+    resource  :qa,                only: [ :create ], controller: "company_qas"
+    resource  :ia_context,        only: [ :update ], controller: "company_ia_contexts"
   end
 
   get "up" => "rails/health#show", as: :rails_health_check

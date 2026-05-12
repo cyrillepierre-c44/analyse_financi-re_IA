@@ -58,7 +58,8 @@ class CompaniesController < ApplicationController
 
   def company_params
     params.require(:company).permit(
-      :name, :siren, :sector, :country, :currency, :accounting_standard, :is_consolidated
+      :name, :siren, :sector, :country, :currency, :accounting_standard, :is_consolidated,
+      :ia_context, :fiscal_year_end_month
     )
   end
 end

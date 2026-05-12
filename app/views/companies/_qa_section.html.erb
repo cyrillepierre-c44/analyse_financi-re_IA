@@ -1,0 +1,133 @@
+<div id="qa-frame" class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
+  <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-lg">❓</span>
+      <div>
+        <h2 class="font-semibold text-gray-800">Diagnostic rapide — Questions / Réponses</h2>
+        <% if company.company_answers.any? %>
+          <% last_gen = company.company_answers.maximum(:generated_at) %>
+          <p class="text-xs text-gray-400 mt-0.5">
+            Généré le <%= last_gen.strftime("%d/%m/%Y à %H:%M") %>
+          </p>
+        <% else %>
+          <p class="text-xs text-gray-400 mt-0.5">
+            <%= Question.count %> questions · analyse par IA
+          </p>
+        <% end %>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <%# Bouton contexte IA %>
+      <button type="button"
+              onclick="document.getElementById('ia-context-panel').classList.toggle('hidden')"
+              class="text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+              title="<%= company.ia_context.present? ? 'Contexte IA renseigné' : 'Ajouter un contexte sectoriel pour l\'IA' %>">
+        <% if company.ia_context.present? %>
+          <span class="text-indigo-600">⚙ Contexte IA</span>
+        <% else %>
+          ⚙ Contexte IA
+        <% end %>
+      </button>
+      <% if company.company_answers.any? %>
+        <%= form_with url: company_qa_path(company), method: :post do |f| %>
+          <%= f.submit "↺ Régénérer",
+              class: "text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
+              data: { disable_with: "En cours…" } %>
+        <% end %>
+      <% else %>
+        <%= form_with url: company_qa_path(company), method: :post do |f| %>
+          <%= f.submit "✦ Générer le diagnostic",
+              class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg cursor-pointer transition-colors shadow-sm",
+              data: { disable_with: "Analyse en cours…" } %>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <%# Panneau contexte IA (collapsible) %>
+  <div id="ia-context-panel" class="<%= company.ia_context.present? ? '' : 'hidden' %> border-b border-indigo-100 bg-indigo-50 px-6 py-4">
+    <div class="mb-2 flex items-center justify-between">
+      <p class="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Contexte sectoriel pour l'IA</p>
+      <label class="text-xs text-indigo-500 hover:text-indigo-700 cursor-pointer border border-indigo-200 hover:border-indigo-400 px-2 py-1 rounded transition-colors">
+        📎 Charger un fichier
+        <input type="file" accept=".txt,.md" class="hidden" onchange="
+          const reader = new FileReader();
+          reader.onload = e => document.getElementById('ia-context-textarea').value = e.target.result;
+          reader.readAsText(this.files[0]);
+        ">
+      </label>
+    </div>
+    <p class="text-xs text-indigo-500 mb-3">
+      Décrivez ici les spécificités du secteur, les pratiques opérationnelles, le modèle économique…
+      L'IA utilisera ce texte en complément des données financières pour répondre aux questions.
+      Vous pouvez coller directement du texte ou charger un fichier .txt/.md.
+    </p>
+    <%= form_with url: company_ia_context_path(company), method: :patch, local: true do |f| %>
+      <%= f.text_area :ia_context,
+            id: "ia-context-textarea",
+            value: company.ia_context,
+            rows: 8,
+            placeholder: "Ex : Secteur champagne — achats de raisin une fois par an lors des vendanges (septembre-octobre). Stocks pluriannuels obligatoires (15 mois minimum). Ventes concentrées sur le 4e trimestre…",
+            class: "w-full text-sm text-gray-700 border border-indigo-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white resize-y font-mono",
+            name: "company[ia_context]" %>
+      <div class="mt-2 flex gap-2 justify-end">
+        <button type="button"
+                onclick="document.getElementById('ia-context-textarea').value = ''; this.form.submit();"
+                class="text-xs text-gray-400 hover:text-red-500 px-3 py-1.5 rounded border border-gray-200 hover:border-red-200 transition-colors">
+          Effacer
+        </button>
+        <%= f.submit "Enregistrer le contexte",
+              class: "text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg cursor-pointer transition-colors" %>
+      </div>
+    <% end %>
+  </div>
+
+  <% if company.company_answers.any? %>
+    <% answers_by_question = company.company_answers.includes(:question).index_by(&:question_id) %>
+    <div class="divide-y divide-gray-100">
+      <% Question.all.each do |question| %>
+        <% answer = answers_by_question[question.id] %>
+        <div class="px-6 py-4 flex gap-4">
+          <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold flex items-center justify-center mt-0.5">
+            <%= question.position %>
+          </span>
+          <div class="flex-1">
+            <p class="text-sm font-medium text-gray-800 mb-2"><%= question.text %></p>
+            <% if answer %>
+              <% if question.numerical? %>
+                <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-emerald-50 ring-1 ring-emerald-300">
+                  <svg class="h-4 w-4 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                  </svg>
+                  <span class="text-xl font-bold text-emerald-800">
+                    <%= answer.selected_options.first %><% if question.options.any? %> <%= question.options.first %><% end %>
+                  </span>
+                </span>
+              <% else %>
+                <div class="flex flex-wrap gap-2">
+                  <% question.options.each do |option| %>
+                    <% selected = answer.selected_options.include?(option) %>
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium
+                      <%= selected ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300' : 'bg-gray-100 text-gray-400' %>">
+                      <% if selected %>
+                        <svg class="mr-1 h-3 w-3 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                        </svg>
+                      <% end %>
+                      <%= option %>
+                    </span>
+                  <% end %>
+                </div>
+              <% end %>
+            <% else %>
+              <span class="text-xs text-gray-400 italic">Non répondu</span>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+      Réponses générées automatiquement par IA à partir des données comptables. Vérifiez la cohérence avec les données source.
+    </div>
+  <% end %>
+</div>

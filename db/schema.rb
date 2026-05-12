@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_22_080022) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_07_141516) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -98,6 +98,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_22_080022) do
     t.string "country", default: "France", null: false
     t.datetime "created_at", null: false
     t.string "currency", default: "EUR", null: false
+    t.integer "fiscal_year_end_month", default: 12, null: false
+    t.text "ia_context"
     t.boolean "is_consolidated", default: false, null: false
     t.string "name", null: false
     t.string "sector"
@@ -105,6 +107,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_22_080022) do
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_companies_on_name"
     t.index ["siren"], name: "index_companies_on_siren", unique: true, where: "(siren IS NOT NULL)"
+  end
+
+  create_table "company_answers", force: :cascade do |t|
+    t.bigint "company_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "generated_at"
+    t.bigint "question_id", null: false
+    t.json "selected_options", default: [], null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_id", "question_id"], name: "index_company_answers_on_company_id_and_question_id", unique: true
+    t.index ["company_id"], name: "index_company_answers_on_company_id"
+    t.index ["question_id"], name: "index_company_answers_on_question_id"
   end
 
   create_table "cost_structures", force: :cascade do |t|
@@ -178,8 +192,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_22_080022) do
     t.index ["financial_report_id"], name: "index_income_statements_on_financial_report_id", unique: true
   end
 
+  create_table "questions", force: :cascade do |t|
+    t.string "answer_type", default: "single", null: false
+    t.datetime "created_at", null: false
+    t.json "options", default: [], null: false
+    t.integer "position", null: false
+    t.text "text", null: false
+    t.datetime "updated_at", null: false
+    t.index ["position"], name: "index_questions_on_position"
+  end
+
   add_foreign_key "balance_sheets", "financial_reports"
   add_foreign_key "cash_flow_statements", "financial_reports"
+  add_foreign_key "company_answers", "companies"
+  add_foreign_key "company_answers", "questions"
   add_foreign_key "cost_structures", "financial_reports"
   add_foreign_key "financial_reports", "companies"
   add_foreign_key "income_statements", "financial_reports"
