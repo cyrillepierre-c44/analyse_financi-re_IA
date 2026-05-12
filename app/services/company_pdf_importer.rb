@@ -59,10 +59,26 @@ class CompanyPdfImporter
     # Pages qui semblent être des tableaux financiers (titre court + chiffres attendus)
     financial_title_re = /états financiers|compte de résultat|bilan|flux de trésorerie|annexe \d/i
     pages_text.each do |t|
-      # Page avec un titre financier mais quasi vide → table graphique détectée
       return true if t.match?(financial_title_re) && t.length < FINANCIAL_PAGE_MIN_CHARS
     end
 
+    # Pages quasi-vides (< 100 chars) qui contiennent une image → PDF mixte
+    return true if image_pages_detected?
+
+    false
+  end
+
+  # Utilise PyMuPDF (fitz) pour détecter les pages avec images et peu de texte
+  def image_pages_detected?
+    script = <<~PY
+      import fitz, sys
+      doc = fitz.open(sys.argv[1])
+      count = sum(1 for p in doc if len(p.get_images()) > 0 and len(p.get_text()) < 150)
+      print(count)
+    PY
+    result = `python3 -c #{Shellwords.escape(script)} #{Shellwords.escape(@pdf_path)} 2>/dev/null`.strip.to_i
+    result > 0
+  rescue
     false
   end
 

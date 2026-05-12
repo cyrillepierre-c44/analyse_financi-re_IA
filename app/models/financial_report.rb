@@ -100,55 +100,61 @@ class FinancialReport < ApplicationRecord
     bfr / (revenue * (1 + vat_rate)) * 365
   end
 
-  # Délai de règlement clients (DSO) = Clients / CA TTC × 365
-  def days_sales_outstanding(vat_rate: 0.20)
+  # Délai de règlement clients (DSO) = Clients HT / CA HT × 365
+  # Formule HT/HT, cohérente avec la méthode académique (Q14).
+  def days_sales_outstanding
     revenue = income_statement&.revenue
     return nil unless revenue&.positive?
-    clients = balance_sheet&.trade_receivables || 0   # nil = 0 client en fin d'exercice
-    clients / (revenue * (1 + vat_rate)) * 365
+    clients = balance_sheet&.trade_receivables || 0
+    clients / revenue * 365
   end
 
   # Rotation des stocks = Stocks / Coût d'achat × 365
   def days_inventory_outstanding
     stocks    = balance_sheet&.total_inventory
-    # Coût d'achat marchandises net (achats - déstockage), fallback matières premières
+    # Coût d'achat : achats nets marchandises, puis MP, puis coût des ventes (fallback)
     cout_achat = begin
       mp  = income_statement&.merchandise_purchases
       var = income_statement&.merchandise_stock_variation
       if mp
-        mp + (var || 0)          # achats nets
+        mp + (var || 0)
       else
-        income_statement&.raw_materials_purchases
+        income_statement&.raw_materials_purchases ||
+          income_statement&.cost_of_sales
       end
     end
     return nil unless stocks && cout_achat&.positive?
     stocks / cout_achat * 365
   end
 
-  # Délai de règlement fournisseurs (DPO) — fallback merchandise_purchases
+  # Délai de règlement fournisseurs (DPO)
+  # Fallback : si achats non disponibles, approximation via coût des ventes
   def days_payable_outstanding(vat_rate: 0.20)
     fournisseurs = balance_sheet&.trade_payables
-    achats = income_statement&.merchandise_purchases || income_statement&.raw_materials_purchases
+    achats = income_statement&.merchandise_purchases ||
+             income_statement&.raw_materials_purchases ||
+             income_statement&.cost_of_sales
     return nil unless fournisseurs && achats&.positive?
     fournisseurs / (achats * (1 + vat_rate)) * 365
   end
 
   # Cycle de trésorerie = DSO + DIO - DPO (jours)
-  def cash_conversion_cycle(vat_rate: 0.20)
-    dso = days_sales_outstanding(vat_rate: vat_rate)
-    dpo = days_payable_outstanding(vat_rate: vat_rate)
+  def cash_conversion_cycle
+    dso = days_sales_outstanding
+    dpo = days_payable_outstanding
     dio = days_inventory_outstanding
     return nil unless dso && dpo
     dso + (dio || 0) - dpo
   end
 
   # ── INTENSITÉ CAPITALISTIQUE ──────────────────────────────────────────────
-  # Actif économique / Valeur Ajoutée — mesure l'immobilisation par € de VA créée
+  # Actif économique / Valeur Ajoutée (fallback CA si VA indisponible)
   def capital_intensity
     ae = balance_sheet&.economic_assets
-    va = income_statement&.value_added_calculated
-    return nil unless ae && va&.positive?
-    ae / va
+    denominateur = income_statement&.value_added_calculated ||
+                   income_statement&.revenue
+    return nil unless ae && denominateur&.positive?
+    ae / denominateur
   end
 
   # ── PARTAGE DE LA VALEUR AJOUTÉE ─────────────────────────────────────────

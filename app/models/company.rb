@@ -1,10 +1,29 @@
 class Company < ApplicationRecord
   has_many :financial_reports, dependent: :destroy
+  has_many :company_answers,  dependent: :destroy
+  has_many :questions, through: :company_answers
 
   enum :accounting_standard, { pcg: 0, ifrs: 1 }
 
   validates :name, presence: true, uniqueness: { case_sensitive: false }
+  validates :fiscal_year_end_month, inclusion: { in: 1..12 }
   # country et currency ont des valeurs par défaut en DB (France / EUR)
+
+  # ── LIBELLÉ DE L'EXERCICE FISCAL ─────────────────────────────────────────
+  # Si la clôture est ≤ juin, l'exercice chevauche 2 années civiles : "2021-22"
+  # Sinon (clôture ≥ juillet) l'exercice est dans une seule année : "2022"
+  def fiscal_year_label(year)
+    if fiscal_year_end_month <= 6
+      "#{year - 1}-#{year.to_s[-2..]}"
+    else
+      year.to_s
+    end
+  end
+
+  def fiscal_year_end_label(year)
+    month_name = Date::MONTHNAMES[fiscal_year_end_month]
+    "#{month_name} #{year}"
+  end
 
   # ── TAUX DE CROISSANCE ANNUEL MOYEN (TCAM) DU CA ─────────────────────────
   # TCAM = (CA_N / CA_0)^(1/n) - 1

@@ -34,10 +34,12 @@ class BalanceSheet < ApplicationRecord
 
   # ── RATIOS D'INVESTISSEMENT ───────────────────────────────────────────
 
-  # Ratio état outil industriel = Immo nettes / Immo brutes
+  # Ratio état outil industriel = Immo corporelles nettes hors terrain / brutes hors terrain
   def industrial_tool_ratio
-    return nil unless total_fixed_assets_gross&.positive?
-    total_fixed_assets_net / total_fixed_assets_gross
+    gross = tangible_assets_gross || total_fixed_assets_gross
+    net   = tangible_assets_net   || total_fixed_assets_net
+    return nil unless gross&.positive? && net
+    net / gross
   end
 
   # ── RATIOS DE LIQUIDITÉ ───────────────────────────────────────────────
@@ -54,13 +56,13 @@ class BalanceSheet < ApplicationRecord
   # Ratio de liquidité générale = Actif circulant / Passif exigible CT
   def general_liquidity_ratio
     return nil unless current_liabilities.positive?
-    (total_current_assets || 0) / current_liabilities
+    effective_current_assets / current_liabilities
   end
 
   # Ratio de liquidité réduite = (Actif circulant - Stocks) / Passif exigible CT
   def reduced_liquidity_ratio
     return nil unless current_liabilities.positive?
-    ((total_current_assets || 0) - (total_inventory || 0)) / current_liabilities
+    (effective_current_assets - (total_inventory || 0)) / current_liabilities
   end
 
   # Ratio de liquidité immédiate = (Disponibilités + VMP) / Passif exigible CT
@@ -81,5 +83,19 @@ class BalanceSheet < ApplicationRecord
   def financial_leverage
     return nil unless total_equity&.positive?
     net_financial_debt / total_equity
+  end
+
+  private
+
+  def effective_current_assets
+    total_current_assets ||
+      (total_inventory || 0) +
+      (trade_receivables || 0) +
+      (other_operating_receivables || 0) +
+      (prepaid_expenses || 0) +
+      (discounted_bills_not_due || 0) +
+      (customer_advances_paid || 0) +
+      (short_term_investments || 0) +
+      (cash_and_equivalents || 0)
   end
 end

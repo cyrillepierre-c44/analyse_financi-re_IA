@@ -9,17 +9,18 @@
   <span class="text-gray-300">/</span>
   <%= link_to @company.name, company_path(@company), class: "text-indigo-600 hover:underline" %>
   <span class="text-gray-300">/</span>
-  <span class="text-gray-600 font-medium"><%= @report.fiscal_year %></span>
+  <span class="text-gray-600 font-medium"><%= @company.fiscal_year_label(@report.fiscal_year) %></span>
 </div>
 
 <%# ── HEADER ────────────────────────────────────────────────────────────────── %>
 <div class="flex items-start justify-between mb-8">
   <div>
     <h1 class="text-2xl font-bold text-gray-900">
-      <%= @company.name %> — Exercice <%= @report.fiscal_year %>
+      <%= @company.name %> — Exercice <%= @company.fiscal_year_label(@report.fiscal_year) %>
     </h1>
     <p class="text-sm text-gray-500 mt-1">
-      <%= @report.period_end_date.strftime("01/01/%Y au %d/%m/%Y") %> ·
+      <% period_start = @report.period_end_date - 1.year + 1.day %>
+      <%= period_start.strftime("%d/%m/%Y") %> au <%= @report.period_end_date.strftime("%d/%m/%Y") %> ·
       Format <%= @report.income_format %> · <%= @report.accounting_standard.upcase %>
       <% if @report.source_file.present? %>
         · <span class="italic"><%= @report.source_file %></span>
@@ -28,13 +29,13 @@
   </div>
   <div class="flex gap-2">
     <% if @prev_report %>
-      <%= link_to "← #{@prev_report.fiscal_year}", company_financial_report_path(@company, @prev_report),
+      <%= link_to "← #{@company.fiscal_year_label(@prev_report.fiscal_year)}", company_financial_report_path(@company, @prev_report),
           class: "text-sm border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-600" %>
     <% end %>
     <%# Exercice suivant %>
     <% next_report = @company.financial_reports.find_by(fiscal_year: @report.fiscal_year + 1) %>
     <% if next_report %>
-      <%= link_to "#{next_report.fiscal_year} →", company_financial_report_path(@company, next_report),
+      <%= link_to "#{@company.fiscal_year_label(next_report.fiscal_year)} →", company_financial_report_path(@company, next_report),
           class: "text-sm border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-600" %>
     <% end %>
     <%= link_to "📥 Import", new_company_import_path(@company),
@@ -419,8 +420,10 @@ document.addEventListener("turbo:load", function() {
         { label: "Liquidité générale",      val: bs&.general_liquidity_ratio,        fmt: :ratio, norme: "> 1",    good: ->(v){ v >= 1 } },
         { label: "Liquidité réduite",       val: bs&.reduced_liquidity_ratio,        fmt: :ratio, norme: "> 0,8",  good: ->(v){ v >= 0.8 } },
         { label: "Liquidité immédiate",     val: bs&.immediate_liquidity_ratio,      fmt: :ratio, norme: "> 0,2",  good: ->(v){ v >= 0.2 } },
-        { label: "État outil industriel",   val: bs&.industrial_tool_ratio,          fmt: :pct,   norme: nil,      good: nil },
-        { label: "Intensité capitalistique",val: @report.capital_intensity,          fmt: :ratio, norme: nil,      good: nil },
+        { label: "État outil industriel",   val: bs&.industrial_tool_ratio,          fmt: :pct,   norme: nil,      good: nil,
+          hint: bs&.industrial_tool_ratio ? nil : "Immo. brutes non disponibles — à saisir depuis les notes annexes" },
+        { label: is&.value_added_calculated ? "Intensité cap. (AE/VA)" : "Intensité cap. (AE/CA)",
+                                            val: @report.capital_intensity,          fmt: :ratio, norme: nil,      good: nil },
       ]
     %>
     <% ratios_data.each do |r| %>
@@ -435,6 +438,9 @@ document.addEventListener("turbo:load", function() {
         </p>
         <% if r[:norme] %>
           <p class="text-xs text-gray-400 mt-0.5">norme : <%= r[:norme] %></p>
+        <% end %>
+        <% if r[:hint] %>
+          <p class="text-xs text-amber-500 mt-0.5 leading-tight"><%= r[:hint] %></p>
         <% end %>
       </div>
     <% end %>
