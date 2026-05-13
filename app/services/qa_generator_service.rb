@@ -315,6 +315,14 @@ class QaGeneratorService
     lines << "Secteur : #{@company.sector || 'N/R'}  |  Référentiel : #{@company.accounting_standard.upcase}  |  Pays : #{@company.country}"
     lines << ""
 
+    # Extraire la proportion de ventes France depuis ia_context (pour DSO avec TVA)
+    # Convention : ajouter une ligne "FRANCE_PCT: 19.5" dans l'ia_context de la société.
+    if (m = @company.ia_context.to_s.match(/FRANCE_PCT\s*:\s*(\d+(?:[.,]\d+)?)/i))
+      pct_france = m[1].tr(",", ".").to_f
+      lines << "**Proportion ventes France : #{pct_france} % — à utiliser pour le calcul du DSO avec ajustement TVA (taux TVA effectif = 20 % × #{pct_france} % = #{(0.20 * pct_france).round(2)} %).**"
+      lines << ""
+    end
+
     # Résultats pré-calculés en Ruby — à utiliser comme référence pour les questions dépendantes
     precomputed = compute_ruby_answers
     q_map = @questions.index_by(&:id)

@@ -84,4 +84,7 @@ Rails.application.configure do
   #
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+
+  # Stockage fichiers : S3 sur Heroku (configurer AWS_* dans les env vars Heroku)
+  config.active_storage.service = ENV["AWS_BUCKET"].present? ? :amazon : :local
 end

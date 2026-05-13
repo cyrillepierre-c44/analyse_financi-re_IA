@@ -4,9 +4,9 @@ class CompaniesController < ApplicationController
   end
 
   def show
-    @company = Company.find(params[:id])
+    @company = Company.includes(company_documents: { file_attachment: :blob }).find(params[:id])
     @reports = @company.financial_reports
-                       .includes(:income_statement, :balance_sheet)
+                       .includes(:income_statement, :balance_sheet, :cash_flow_statement, :cost_structures)
                        .order(fiscal_year: :asc)
   end
 

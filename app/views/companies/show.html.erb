@@ -50,15 +50,91 @@
 <%# ── GRAPHIQUES MULTI-ANNÉES ─────────────────────────────────────────────── %>
 <% if @reports.size >= 1 %>
   <%
-    years  = @reports.map { |r| @company.fiscal_year_label(r.fiscal_year) }
-    ca     = @reports.map { |r| r.income_statement&.revenue&.to_f || 0 }
-    ebit_v = @reports.map { |r| r.income_statement&.ebit&.to_f    || 0 }
-    rn_v   = @reports.map { |r| r.income_statement&.net_income&.to_f || 0 }
-    cp_v   = @reports.map { |r| r.balance_sheet&.total_equity&.to_f || 0 }
-    dettes = @reports.map { |r| ((r.balance_sheet&.lt_financial_debt || 0) + (r.balance_sheet&.st_financial_debt || 0)).to_f }
-    marge_ebit = @reports.map { |r| (r.income_statement&.ebit_margin.to_f * 100).round(1) }
+    # ── Séries de base ──────────────────────────────────────────────────────
+    years       = @reports.map { |r| @company.fiscal_year_label(r.fiscal_year) }
+    ca          = @reports.map { |r| r.income_statement&.revenue&.to_f || 0 }
+    ebit_v      = @reports.map { |r| r.income_statement&.ebit&.to_f    || 0 }
+    rn_v        = @reports.map { |r| r.income_statement&.net_income&.to_f || 0 }
+    cp_v        = @reports.map { |r| r.balance_sheet&.total_equity&.to_f || 0 }
+    dettes      = @reports.map { |r| ((r.balance_sheet&.lt_financial_debt || 0) + (r.balance_sheet&.st_financial_debt || 0)).to_f }
+    marge_ebit  = @reports.map { |r| (r.income_statement&.ebit_margin.to_f * 100).round(1) }
     marge_nette = @reports.map { |r| (r.income_statement&.net_margin.to_f * 100).round(1) }
-    ebe_marge = @reports.map { |r| (r.income_statement&.ebitda_margin.to_f * 100).round(1) }
+    ebe_marge   = @reports.map { |r| (r.income_statement&.ebitda_margin.to_f * 100).round(1) }
+
+    # ── Taux IS apparent = IS / (RN + IS) ───────────────────────────────────
+    apparent_is = @reports.map { |r|
+      is = r.income_statement
+      if is&.income_tax&.positive? && is.net_income
+        pre = is.net_income + is.income_tax
+        pre > 0 ? is.income_tax / pre : 0.25
+      else
+        0.25
+      end
+    }
+
+    # ── Re avec taux IS apparent (ratio 0-1) ────────────────────────────────
+    re_apparent_v = @reports.each_with_index.map { |r, i|
+      ae   = r.balance_sheet&.economic_assets
+      ebit = r.income_statement&.ebit
+      ae&.positive? && ebit ? ebit * (1 - apparent_is[i]) / ae : nil
+    }
+
+    # ── Rcp part du groupe = (RN - intérêts minoritaires) / (CP - CP minoritaires) ──
+    rcp_g_v = @reports.map { |r|
+      is = r.income_statement; bs = r.balance_sheet
+      rn = (is&.net_income || 0) - (is&.minority_interests || 0)
+      cp = (bs&.total_equity || 0) - (bs&.minority_interests || 0)
+      cp > 0 ? rn / cp : nil
+    }
+
+    # ── Coût dette nette après IS = charges fi / DN × (1 - taux IS apparent) ──
+    cout_dette_v = @reports.each_with_index.map { |r, i|
+      is = r.income_statement; bs = r.balance_sheet
+      fi = is&.financial_expenses
+      nd = bs&.net_financial_debt
+      fi&.positive? && nd&.positive? ? fi / nd * (1 - apparent_is[i]) : nil
+    }
+
+    # ── DPO large = (fourn + autres dettes exploit) / (CA - EBITDA) × 1.20 × 365 ──
+    dpo_large_v = @reports.map { |r|
+      is = r.income_statement; bs = r.balance_sheet
+      fourn   = (bs&.trade_payables || 0) + (bs&.other_operating_liabilities || 0)
+      charges = (is&.revenue || 0) - (is&.ebitda_calculated || 0)
+      charges > 0 ? (fourn / (charges * 1.20) * 365).round(0) : nil
+    }
+
+    # ── BFR en jours CA HT ──────────────────────────────────────────────────
+    bfr_j_v = @reports.map { |r|
+      bfr = r.balance_sheet&.working_capital_requirement
+      rev = r.income_statement&.revenue
+      rev&.positive? && bfr ? (bfr / rev * 365).round(0) : nil
+    }
+
+    # ── Séries BFR composantes & cash ────────────────────────────────────────
+    stocks_v    = @reports.map { |r| r.balance_sheet&.total_inventory&.to_f || 0 }
+    creances_v  = @reports.map { |r| r.balance_sheet&.trade_receivables&.to_f || 0 }
+    fourn_bfr_v = @reports.map { |r| r.balance_sheet&.trade_payables&.to_f || 0 }
+    caf_v       = @reports.map { |r| r.caf_calculated&.to_f || 0 }
+    capex_v     = @reports.map { |r| r.cash_flow_statement&.capital_expenditure&.to_f || 0 }
+    div_v       = @reports.map { |r|
+      v = r.cash_flow_statement&.dividends_paid || r.income_statement&.dividends_paid || 0
+      v.to_f.abs
+    }
+    dso_chart_v = @reports.map { |r| r.days_sales_outstanding&.round(0) || 0 }
+    dio_chart_v = @reports.map { |r| r.days_inventory_outstanding&.round(0) || 0 }
+
+    # ── Séries rentabilité pour graphique 7 ─────────────────────────────────
+    re_chart         = re_apparent_v.map { |v| v ? (v * 100).round(1) : 0 }
+    rcp_g_chart      = rcp_g_v.map      { |v| v ? (v * 100).round(1) : 0 }
+    cout_dette_chart = cout_dette_v.map { |v| v ? (v * 100).round(1) : 0 }
+
+    # ── Hashes pour la table ─────────────────────────────────────────────────
+    apparent_is_h = @reports.each_with_index.map { |r, i| [r.id, apparent_is[i]] }.to_h
+    re_apparent_h = @reports.each_with_index.map { |r, i| [r.id, re_apparent_v[i]] }.to_h
+    rcp_g_h       = @reports.each_with_index.map { |r, i| [r.id, rcp_g_v[i]] }.to_h
+    cout_dette_h  = @reports.each_with_index.map { |r, i| [r.id, cout_dette_v[i]] }.to_h
+    dpo_large_h   = @reports.each_with_index.map { |r, i| [r.id, dpo_large_v[i]] }.to_h
+    bfr_j_h       = @reports.each_with_index.map { |r, i| [r.id, bfr_j_v[i]] }.to_h
   %>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
@@ -81,14 +157,57 @@
       <canvas id="chartStructure" height="200"></canvas>
     </div>
 
-    <%# Graphique 4 : Re / Rcp %>
+    <%# Graphique 4 : Rentabilité ROE/Re/ROA %>
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <h3 class="text-sm font-semibold text-gray-700 mb-4">Rentabilité (%)</h3>
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Rentabilité — Re / Rcp / ROA (%)</h3>
       <canvas id="chartRentabilite" height="200"></canvas>
     </div>
+
+    <%# Graphique 5 : BFR & composantes %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">BFR & composantes (€)</h3>
+      <canvas id="chartBFR" height="200"></canvas>
+    </div>
+
+    <%# Graphique 6 : DSO / DPO / DIO %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Délais clients, fournisseurs & stocks (j)</h3>
+      <canvas id="chartDelais" height="200"></canvas>
+    </div>
+
+    <%# Graphique 7 : Re apparent / Rcp PDG / Coût dette %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">Re apparent, Rcp PDG & coût de la dette (%)</h3>
+      <canvas id="chartRentabilite2" height="200"></canvas>
+    </div>
+
+    <%# Graphique 8 : CAF / CAPEX / Dividendes %>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">CAF, CAPEX & dividendes (€)</h3>
+      <canvas id="chartCAF" height="200"></canvas>
+    </div>
+
   </div>
 
   <script>
+  // Détruit les graphiques avant que Turbo ne mette la page en cache,
+  // pour éviter l'erreur "Canvas is already in use" lors du retour.
+  document.addEventListener("turbo:before-cache", function() {
+    ['chartResultats','chartMarges','chartStructure','chartRentabilite',
+     'chartBFR','chartDelais','chartRentabilite2','chartCAF'].forEach(function(id) {
+      const el = document.getElementById(id);
+      if (el) { const c = Chart.getChart(el); if (c) c.destroy(); }
+    });
+  });
+
+  function makeChart(id, config) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const existing = Chart.getChart(el);
+    if (existing) existing.destroy();
+    return new Chart(el, config);
+  }
+
   document.addEventListener("turbo:load", function() {
     const years = <%= raw years.to_json %>;
     const colors = {
@@ -98,6 +217,8 @@
       sky:     '#0ea5e9', skyBg:    'rgba(14,165,233,0.15)',
       rose:    '#f43f5e', roseBg:   'rgba(244,63,94,0.15)',
       amber:   '#f59e0b', amberBg:  'rgba(245,158,11,0.15)',
+      teal:    '#14b8a6', tealBg:   'rgba(20,184,166,0.15)',
+      orange:  '#f97316', orangeBg: 'rgba(249,115,22,0.15)',
     };
     const opts = {
       responsive: true,
@@ -107,14 +228,16 @@
         y: { grid: { color: '#f3f4f6' }, ticks: { font: { size: 11 } } }
       }
     };
+    const optsPct  = { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, ticks: { callback: v => v + ' %', font: { size: 11 } } } } };
+    const optsDays = { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, ticks: { callback: v => v + ' j', font: { size: 11 } } } } };
 
     // Graphique 1 : Résultats
-    new Chart(document.getElementById('chartResultats'), {
+    makeChart('chartResultats', {
       type: 'bar',
       data: {
         labels: years,
         datasets: [
-          { label: "Chiffre d'affaires", data: <%= raw ca.to_json %>, backgroundColor: colors.indigoBg, borderColor: colors.indigo, borderWidth: 2, borderRadius: 4 },
+          { label: "CA", data: <%= raw ca.to_json %>, backgroundColor: colors.indigoBg, borderColor: colors.indigo, borderWidth: 2, borderRadius: 4 },
           { label: 'EBIT', data: <%= raw ebit_v.to_json %>, backgroundColor: colors.violetBg, borderColor: colors.violet, borderWidth: 2, borderRadius: 4 },
           { label: 'Résultat net', data: <%= raw rn_v.to_json %>, backgroundColor: colors.emeraldBg, borderColor: colors.emerald, borderWidth: 2, borderRadius: 4 },
         ]
@@ -123,51 +246,106 @@
     });
 
     // Graphique 2 : Marges
-    new Chart(document.getElementById('chartMarges'), {
+    makeChart('chartMarges', {
       type: 'line',
       data: {
         labels: years,
         datasets: [
-          { label: 'Marge EBITDA %', data: <%= raw ebe_marge.to_json %>, borderColor: colors.violet, backgroundColor: colors.violetBg, fill: true, tension: 0.3, pointRadius: 5 },
-          { label: 'Marge EBIT %',   data: <%= raw marge_ebit.to_json %>, borderColor: colors.indigo, backgroundColor: colors.indigoBg, fill: true, tension: 0.3, pointRadius: 5 },
-          { label: 'Marge nette %',  data: <%= raw marge_nette.to_json %>, borderColor: colors.emerald, backgroundColor: colors.emeraldBg, fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'Marge EBE %',  data: <%= raw ebe_marge.to_json %>,   borderColor: colors.violet,  backgroundColor: colors.violetBg,  fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'Marge EBIT %', data: <%= raw marge_ebit.to_json %>,  borderColor: colors.indigo,  backgroundColor: colors.indigoBg,  fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'Marge nette %',data: <%= raw marge_nette.to_json %>, borderColor: colors.emerald, backgroundColor: colors.emeraldBg, fill: true, tension: 0.3, pointRadius: 5 },
         ]
       },
-      options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, ticks: { callback: v => v + ' %', font: { size: 11 } } } } }
+      options: optsPct
     });
 
     // Graphique 3 : Structure financière
-    new Chart(document.getElementById('chartStructure'), {
+    makeChart('chartStructure', {
       type: 'bar',
       data: {
         labels: years,
         datasets: [
-          { label: 'Capitaux propres', data: <%= raw cp_v.to_json %>, backgroundColor: colors.emeraldBg, borderColor: colors.emerald, borderWidth: 2, borderRadius: 4 },
-          { label: 'Dettes financières', data: <%= raw dettes.to_json %>, backgroundColor: colors.roseBg, borderColor: colors.rose, borderWidth: 2, borderRadius: 4 },
+          { label: 'Capitaux propres',   data: <%= raw cp_v.to_json %>,   backgroundColor: colors.emeraldBg, borderColor: colors.emerald, borderWidth: 2, borderRadius: 4 },
+          { label: 'Dettes financières', data: <%= raw dettes.to_json %>, backgroundColor: colors.roseBg,    borderColor: colors.rose,    borderWidth: 2, borderRadius: 4 },
         ]
       },
       options: opts
     });
 
-    // Graphique 4 : Rentabilité
-    const reData    = <%= raw @reports.map { |r| (r.economic_return.to_f * 100).round(1) }.to_json %>;
-    const rcpData   = <%= raw @reports.map { |r| (r.return_on_equity.to_f * 100).round(1) }.to_json %>;
-    const roaData   = <%= raw @reports.map { |r| (r.return_on_assets.to_f * 100).round(1) }.to_json %>;
-    new Chart(document.getElementById('chartRentabilite'), {
+    // Graphique 4 : Rentabilité (taux IS fixe 25%)
+    const reData  = <%= raw @reports.map { |r| (r.economic_return.to_f * 100).round(1) }.to_json %>;
+    const rcpData = <%= raw @reports.map { |r| (r.return_on_equity.to_f * 100).round(1) }.to_json %>;
+    const roaData = <%= raw @reports.map { |r| (r.return_on_assets.to_f * 100).round(1) }.to_json %>;
+    makeChart('chartRentabilite', {
       type: 'line',
       data: {
         labels: years,
         datasets: [
-          { label: 'Re (éco.)', data: reData,  borderColor: colors.indigo,  backgroundColor: colors.indigoBg,  fill: true, tension: 0.3, pointRadius: 5 },
-          { label: 'Rcp (CP)',  data: rcpData, borderColor: colors.violet,  backgroundColor: colors.violetBg,  fill: true, tension: 0.3, pointRadius: 5 },
-          { label: 'ROA',       data: roaData, borderColor: colors.emerald, backgroundColor: colors.emeraldBg, fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'Re (IS 25%)', data: reData,  borderColor: colors.indigo,  backgroundColor: colors.indigoBg,  fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'Rcp (CP)',    data: rcpData, borderColor: colors.violet,  backgroundColor: colors.violetBg,  fill: true, tension: 0.3, pointRadius: 5 },
+          { label: 'ROA',         data: roaData, borderColor: colors.emerald, backgroundColor: colors.emeraldBg, fill: true, tension: 0.3, pointRadius: 5 },
         ]
       },
-      options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, ticks: { callback: v => v + ' %', font: { size: 11 } } } } }
+      options: optsPct
+    });
+
+    // Graphique 5 : BFR & composantes
+    makeChart('chartBFR', {
+      type: 'bar',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'Stocks',              data: <%= raw stocks_v.to_json %>,    backgroundColor: colors.amberBg,  borderColor: colors.amber,  borderWidth: 2, borderRadius: 4 },
+          { label: 'Créances clients',    data: <%= raw creances_v.to_json %>,  backgroundColor: colors.skyBg,    borderColor: colors.sky,    borderWidth: 2, borderRadius: 4 },
+          { label: 'Dettes fournisseurs', data: <%= raw fourn_bfr_v.to_json %>, backgroundColor: colors.roseBg,   borderColor: colors.rose,   borderWidth: 2, borderRadius: 4 },
+        ]
+      },
+      options: opts
+    });
+
+    // Graphique 6 : DSO / DPO large / DIO
+    makeChart('chartDelais', {
+      type: 'line',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'DSO (j. clients)',       data: <%= raw dso_chart_v.to_json %>,                                        borderColor: colors.sky,   backgroundColor: colors.skyBg,   fill: false, tension: 0.3, pointRadius: 5 },
+          { label: 'DPO large (j. fourn.)',  data: <%= raw dpo_large_v.map { |v| v || 0 }.to_json %>,                    borderColor: colors.rose,  backgroundColor: colors.roseBg,  fill: false, tension: 0.3, pointRadius: 5 },
+          { label: 'DIO (j. stocks)',        data: <%= raw dio_chart_v.to_json %>,                                        borderColor: colors.amber, backgroundColor: colors.amberBg, fill: false, tension: 0.3, pointRadius: 5 },
+        ]
+      },
+      options: optsDays
+    });
+
+    // Graphique 7 : Re apparent / Rcp PDG / Coût dette après IS
+    makeChart('chartRentabilite2', {
+      type: 'line',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'Re apparent',         data: <%= raw re_chart.to_json %>,         borderColor: colors.indigo, backgroundColor: colors.indigoBg, fill: false, tension: 0.3, pointRadius: 5 },
+          { label: 'Rcp PDG',             data: <%= raw rcp_g_chart.to_json %>,       borderColor: colors.violet, backgroundColor: colors.violetBg, fill: false, tension: 0.3, pointRadius: 5 },
+          { label: 'Coût dette après IS', data: <%= raw cout_dette_chart.to_json %>,  borderColor: colors.rose,   backgroundColor: colors.roseBg,   fill: false, tension: 0.3, pointRadius: 5 },
+        ]
+      },
+      options: optsPct
+    });
+
+    // Graphique 8 : CAF / CAPEX / Dividendes
+    makeChart('chartCAF', {
+      type: 'bar',
+      data: {
+        labels: years,
+        datasets: [
+          { label: 'CAF',        data: <%= raw caf_v.to_json %>,   backgroundColor: colors.emeraldBg, borderColor: colors.emerald, borderWidth: 2, borderRadius: 4 },
+          { label: 'CAPEX',      data: <%= raw capex_v.to_json %>, backgroundColor: colors.violetBg,  borderColor: colors.violet,  borderWidth: 2, borderRadius: 4 },
+          { label: 'Dividendes', data: <%= raw div_v.to_json %>,   backgroundColor: colors.amberBg,   borderColor: colors.amber,   borderWidth: 2, borderRadius: 4 },
+        ]
+      },
+      options: opts
     });
   });
   </script>
-<% end %>
 
 <%# ── TABLEAU COMPARATIF ───────────────────────────────────────────────────── %>
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
@@ -178,51 +356,92 @@
     <table class="w-full text-sm">
       <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
         <tr>
-          <th class="px-6 py-3 text-left">Indicateur</th>
+          <th class="px-6 py-3 text-left w-56">Indicateur</th>
           <% @reports.each do |r| %>
             <th class="px-4 py-3 text-right"><%= @company.fiscal_year_label(r.fiscal_year) %></th>
           <% end %>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
-        <% [
-          ["Chiffre d'affaires",       ->(r){ r.income_statement&.revenue },          :euros],
-          ["Marge brute",               ->(r){ r.income_statement&.gross_margin || r.income_statement&.commercial_margin_calculated }, :euros],
-          ["Valeur Ajoutée",            ->(r){ r.income_statement&.value_added_calculated }, :euros],
-          ["EBE (EBITDA)",              ->(r){ r.income_statement&.ebitda_calculated },  :euros],
-          ["EBIT",                      ->(r){ r.income_statement&.ebit },               :euros],
-          ["Marge EBIT",                ->(r){ r.income_statement&.ebit_margin },         :pct],
-          ["Résultat net",              ->(r){ r.income_statement&.net_income },          :euros],
-          ["Marge nette",               ->(r){ r.income_statement&.net_margin },          :pct],
-          ["Capitaux propres",          ->(r){ r.balance_sheet&.total_equity },           :euros],
-          ["BFR",                       ->(r){ r.balance_sheet&.working_capital_requirement }, :euros],
-          ["Dette nette",               ->(r){ r.balance_sheet&.net_financial_debt },     :euros],
-          ["Re (EBIT(1-t)/Actif éco.)", ->(r){ r.economic_return },                       :pct],
-          ["Rcp (RN/CP)",               ->(r){ r.return_on_equity },                      :pct],
-          ["Couverture intérêts",        ->(r){ r.interest_coverage_ratio },               :ratio],
-          ["DPO (j. fourn.)",            ->(r){ r.days_payable_outstanding },              :days],
-          ["DSO (j. clients)",           ->(r){ r.days_sales_outstanding },                :days],
-          ["DIO (j. stocks)",            ->(r){ r.days_inventory_outstanding },            :days],
-        ].each do |label, extractor, fmt| %>
-          <tr class="hover:bg-gray-50">
-            <td class="px-6 py-2.5 text-gray-600"><%= label %></td>
-            <% @reports.each do |r| %>
-              <% val = extractor.call(r) %>
-              <td class="px-4 py-2.5 text-right font-mono text-gray-800">
-                <% case fmt
-                   when :euros then %><%= euros(val) %><%
-                   when :pct   then %><%= pct(val) %><%
-                   when :ratio then %><%= ratio(val) %><%
-                   when :days  then %><%= val ? "#{number_with_precision(val, precision: 0)} j" : "—" %><%
-                   end %>
-              </td>
-            <% end %>
-          </tr>
+        <% rows = [
+          [:h, "COMPTE DE RÉSULTAT"],
+          ["Chiffre d'affaires",    ->(r){ r.income_statement&.revenue },                                                        :euros],
+          ["Marge brute",           ->(r){ r.income_statement&.gross_margin || r.income_statement&.commercial_margin_calculated }, :euros],
+          ["% Marge brute",         ->(r){ gm = r.income_statement&.gross_margin || r.income_statement&.commercial_margin_calculated; rev = r.income_statement&.revenue; gm && rev&.positive? ? gm / rev : nil }, :pct],
+          ["Valeur Ajoutée",        ->(r){ r.income_statement&.value_added_calculated },                                          :euros],
+          ["EBE (EBITDA)",          ->(r){ r.income_statement&.ebitda_calculated },                                               :euros],
+          ["Marge EBE",             ->(r){ r.income_statement&.ebitda_margin },                                                   :pct],
+          ["EBIT",                  ->(r){ r.income_statement&.ebit },                                                            :euros],
+          ["Marge EBIT",            ->(r){ r.income_statement&.ebit_margin },                                                     :pct],
+          ["Résultat net",          ->(r){ r.income_statement&.net_income },                                                      :euros],
+          ["Marge nette",           ->(r){ r.income_statement&.net_margin },                                                      :pct],
+          ["Taux IS apparent",      ->(r){ apparent_is_h[r.id] },                                                                 :pct],
+          ["Point mort",            ->(r){ r.break_even_point },                                                                  :euros],
+          ["Marge de sécurité",     ->(r){ r.break_even_distance },                                                               :pct],
+
+          [:h, "INVESTISSEMENTS & BFR"],
+          ["Immo corpo brutes",     ->(r){ r.balance_sheet&.tangible_assets_gross },                                              :euros],
+          ["Immo corpo nettes",     ->(r){ r.balance_sheet&.tangible_assets_net },                                                :euros],
+          ["État outil industriel", ->(r){ r.balance_sheet&.industrial_tool_ratio },                                              :pct],
+          ["CAPEX",                 ->(r){ r.cash_flow_statement&.capital_expenditure },                                          :euros],
+          ["CAPEX / DAP",           ->(r){ r.industrial_policy_ratio },                                                           :ratio],
+          ["CAF",                   ->(r){ r.caf_calculated },                                                                  :euros],
+          ["FCF",                   ->(r){ r.cash_flow_statement&.free_cash_flow_calculated },                                    :euros],
+          ["Dividendes versés",     ->(r){ (r.cash_flow_statement&.dividends_paid || r.income_statement&.dividends_paid)&.abs },  :euros],
+          ["Stocks",                ->(r){ r.balance_sheet&.total_inventory },                                                    :euros],
+          ["Créances clients",      ->(r){ r.balance_sheet&.trade_receivables },                                                  :euros],
+          ["Dettes fournisseurs",   ->(r){ r.balance_sheet&.trade_payables },                                                     :euros],
+          ["BFR",                   ->(r){ r.balance_sheet&.working_capital_requirement },                                        :euros],
+          ["BFR (j. CA HT)",        ->(r){ bfr_j_h[r.id] },                                                                      :days],
+          ["DSO (j. clients HT)",   ->(r){ r.days_sales_outstanding },                                                            :days],
+          ["DPO large (j. fourn.)", ->(r){ dpo_large_h[r.id] },                                                                   :days],
+          ["DIO (j. stocks)",       ->(r){ r.days_inventory_outstanding },                                                        :days],
+
+          [:h, "STRUCTURE FINANCIÈRE"],
+          ["Capitaux propres",      ->(r){ r.balance_sheet&.total_equity },                                                       :euros],
+          ["Actif économique",      ->(r){ r.balance_sheet&.economic_assets },                                                    :euros],
+          ["Dette nette",           ->(r){ r.balance_sheet&.net_financial_debt },                                                 :euros],
+          ["DN / EBITDA",           ->(r){ r.debt_ratio },                                                                        :ratio],
+          ["Autonomie financière",  ->(r){ r.balance_sheet&.financial_autonomy_ratio },                                           :pct],
+          ["Couverture intérêts",   ->(r){ r.interest_coverage_ratio },                                                           :ratio],
+          ["Liquidité réduite",     ->(r){ r.balance_sheet&.reduced_liquidity_ratio },                                            :ratio],
+
+          [:h, "RENTABILITÉS"],
+          ["Re apparent (IS réel)", ->(r){ re_apparent_h[r.id] },                                                                 :pct],
+          ["Rcp PDG",               ->(r){ rcp_g_h[r.id] },                                                                       :pct],
+          ["Coût dette net. ap. IS",->(r){ cout_dette_h[r.id] },                                                                  :pct],
+        ]
+        rows.each do |row| %>
+          <% if row[0] == :h %>
+            <tr class="bg-indigo-50">
+              <td class="px-6 py-2 text-xs font-bold text-indigo-700 uppercase tracking-wider" colspan="<%= @reports.size + 1 %>"><%= row[1] %></td>
+            </tr>
+          <% else %>
+            <% label, extractor, fmt = row %>
+            <tr class="hover:bg-gray-50">
+              <td class="px-6 py-2.5 text-gray-600"><%= label %></td>
+              <% @reports.each do |r| %>
+                <% val = extractor.call(r) %>
+                <td class="px-4 py-2.5 text-right font-mono text-gray-800">
+                  <% case fmt
+                     when :euros then %><%= euros(val) %><%
+                     when :pct   then %><%= pct(val) %><%
+                     when :ratio then %><%= ratio(val) %><%
+                     when :days  then %><%= val ? "#{number_with_precision(val, precision: 0)} j" : "—" %><%
+                     end %>
+                </td>
+              <% end %>
+            </tr>
+          <% end %>
         <% end %>
       </tbody>
     </table>
   </div>
 </div>
+<% end %>
+
+<%# ── DOCUMENTS & CONTEXTE IA ─────────────────────────────────────────────── %>
+<%= render "companies/documents_and_context_section", company: @company %>
 
 <%# ── DIAGNOSTIC Q&A ─────────────────────────────────────────────────────── %>
 <% if Question.any? %>

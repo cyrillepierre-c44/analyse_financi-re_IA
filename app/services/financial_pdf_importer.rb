@@ -105,6 +105,8 @@ class FinancialPdfImporter
       - Pour les exercices décalés (ex: avril-mars), fiscal_year = année de clôture (ex: 2024-2025 → fiscal_year: 2025, period_end_date: "2025-03-31").
       - Pour `income_format` : "nature" (PCG, avec marge commerciale/VA) ou "fonction" (IFRS, avec coût des ventes/marge brute).
       - Pour les P&L IFRS "fonction", utilise cost_of_sales, gross_margin, distribution_marketing_costs, administrative_costs.
+      - `dividends_paid` dans `cash_flow_statement` : cherche dans le tableau de flux ET dans la proposition d'affectation du résultat / tableau de variation des capitaux propres / notes aux comptes. C'est le montant effectivement distribué aux actionnaires au titre de l'exercice précédent.
+      - `cash_flow_statement` : même si le document ne présente pas de tableau de flux formalisé, remplis au minimum `net_income`, `depreciation_amortization` et `dividends_paid` depuis les autres sections du document. Ne retourne jamais `null` pour l'objet entier.
 
       ## Structure JSON attendue
       ```json
@@ -254,7 +256,7 @@ class FinancialPdfImporter
         report = find_or_create_report(meta)
         save_income_statement(report, entry["income_statement"], unit)       if entry["income_statement"]
         save_balance_sheet(report, entry["balance_sheet"], unit)             if entry["balance_sheet"]
-        save_cash_flow_statement(report, entry["cash_flow_statement"], unit) if entry["cash_flow_statement"]
+        save_cash_flow_statement(report, entry["cash_flow_statement"] || {}, unit)
         save_cost_structures(report, entry["cost_structures"], unit)         if entry["cost_structures"]&.any?
         reports << report
       end
