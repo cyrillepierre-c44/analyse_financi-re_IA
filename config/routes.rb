@@ -7,6 +7,8 @@ Rails.application.routes.draw do
     resource  :analysis,          only: [ :create ]
     resource  :qa,                only: [ :create ], controller: "company_qas"
     resource  :ia_context,        only: [ :update ], controller: "company_ia_contexts"
+    resources :company_documents, only: [ :create, :destroy ]
+    resource  :context_preparation, only: [ :create ], controller: "company_context_preparations"
   end
 
   get "up" => "rails/health#show", as: :rails_health_check

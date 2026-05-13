@@ -23,8 +23,11 @@ gem "dotenv-rails", groups: [:development, :test]
 # AI / LLM
 gem "ruby_llm"
 
-# PDF text extraction
-gem "pdf-reader"
+# Documents : extraction texte multi-format
+gem "pdf-reader"          # PDF texte
+gem "roo"                 # Excel (.xlsx, .xls, .csv)
+gem "mini_magick"         # PDF/PPT → images pour GPT-4o Vision
+gem "aws-sdk-s3", require: false  # Active Storage S3 (Heroku/production)
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"

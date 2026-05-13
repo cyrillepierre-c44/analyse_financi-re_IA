@@ -1,0 +1,134 @@
+<%# ── DOCUMENTS & CONTEXTE IA ─────────────────────────────────────────────── %>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
+  <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-lg">🗂️</span>
+      <div>
+        <h2 class="font-semibold text-gray-800">Documents & Contexte IA</h2>
+        <p class="text-xs text-gray-400 mt-0.5">
+          Uploadez des fichiers, puis enrichissez automatiquement le contexte analytique.
+        </p>
+      </div>
+    </div>
+
+    <%# Badge statut enrichissement %>
+    <% case company.ia_context_status
+       when "processing" %>
+      <span class="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full">
+        <svg class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
+        Enrichissement en cours…
+      </span>
+    <% when "ready" %>
+      <span class="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">✓ Contexte prêt</span>
+    <% when "error" %>
+      <span class="text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-full">✗ Erreur</span>
+    <% end %>
+  </div>
+
+  <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <%# ── Colonne gauche : Documents ──────────────────────────────────────── %>
+    <div>
+      <h3 class="text-sm font-semibold text-gray-700 mb-3">Documents chargés</h3>
+
+      <% docs = company.company_documents.includes(file_attachment: :blob).order(:created_at) %>
+      <% if docs.any? %>
+        <ul class="divide-y divide-gray-100 rounded-lg border border-gray-200 mb-4">
+          <% docs.each do |doc| %>
+            <li class="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="text-base flex-shrink-0">
+                  <% case doc.format_label
+                     when "PDF" then %>📄<% when "Excel/CSV" then %>📊<% when "Word" then %>📝<% when "PowerPoint" then %>📑<% else %>📎<% end %>
+                </span>
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-800 truncate"><%= doc.filename %></p>
+                  <p class="text-xs text-gray-400"><%= doc.human_type %> · <%= doc.format_label %>
+                    <% case doc.status
+                       when "pending"    then %> · <span class="text-gray-400">En attente</span><%
+                       when "processing" then %> · <span class="text-amber-600">Traitement…</span><%
+                       when "processed"  then %> · <span class="text-emerald-600">Extrait</span><%
+                       when "error"      then %> · <span class="text-rose-600">Erreur</span><%
+                       end %>
+                  </p>
+                </div>
+              </div>
+              <%= button_to company_company_document_path(company, doc), method: :delete,
+                  form: { data: { turbo_confirm: "Supprimer ce document ?" } },
+                  class: "text-rose-400 hover:text-rose-600 text-xs flex-shrink-0 ml-2 bg-transparent border-0 cursor-pointer" do %>
+                ✕
+              <% end %>
+            </li>
+          <% end %>
+        </ul>
+      <% else %>
+        <div class="text-center py-6 text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg mb-4">
+          Aucun document chargé
+        </div>
+      <% end %>
+
+      <%# Formulaire upload %>
+      <%= form_with url: company_company_documents_path(company), method: :post,
+          html: { multipart: true, class: "space-y-2" } do |f| %>
+        <div class="flex gap-2">
+          <div class="flex-1">
+            <%= f.select :document_type,
+                CompanyDocument::HUMAN_TYPE_LABELS.map { |k, v| [v, k] },
+                {},
+                class: "block w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white" %>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <%= f.file_field :files, multiple: true, accept: ".pdf,.xlsx,.xls,.csv,.docx,.doc,.pptx,.ppt",
+              class: "block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" %>
+          <%= f.submit "Ajouter",
+              class: "flex-shrink-0 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg cursor-pointer transition-colors",
+              data: { disable_with: "…" } %>
+        </div>
+        <p class="text-xs text-gray-400">PDF, Excel, Word, PowerPoint acceptés · plusieurs fichiers possibles</p>
+      <% end %>
+    </div>
+
+    <%# ── Colonne droite : Contexte IA ──────────────────────────────────────── %>
+    <div>
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-gray-700">Contexte analytique (ia_context)</h3>
+        <% unless company.context_processing? %>
+          <%= button_to company_context_preparation_path(company), method: :post,
+              class: "text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
+              data: { disable_with: "Lancement…" } do %>
+            ✦ Enrichir le contexte
+          <% end %>
+        <% end %>
+      </div>
+
+      <%# Affichage des lacunes identifiées %>
+      <% if company.ia_context_gaps.present? %>
+        <details class="mb-3 text-xs text-gray-500 border border-gray-100 rounded-lg p-3 bg-gray-50">
+          <summary class="cursor-pointer font-medium text-gray-600">Lacunes identifiées lors du dernier enrichissement</summary>
+          <ul class="mt-2 space-y-1 list-disc list-inside">
+            <% company.ia_context_gaps.split("\n").each do |gap| %>
+              <li><%= gap %></li>
+            <% end %>
+          </ul>
+        </details>
+      <% end %>
+
+      <%# Édition du contexte %>
+      <%= form_with url: company_ia_context_path(company), method: :patch, html: { class: "space-y-2" } do |f| %>
+        <%= f.fields_for :company, company do |cf| %>
+          <%= cf.text_area :ia_context,
+              rows: 12,
+              placeholder: "Le contexte sera généré automatiquement par l'IA lors de l'enrichissement.\nVous pouvez aussi le saisir ou le modifier manuellement.",
+              class: "block w-full text-xs border border-gray-200 rounded-lg px-3 py-2.5 text-gray-700 font-mono resize-y bg-gray-50 focus:bg-white focus:border-indigo-300 transition-colors" %>
+        <% end %>
+        <div class="flex justify-end">
+          <%= f.submit "Sauvegarder",
+              class: "text-xs font-medium text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
+              data: { disable_with: "…" } %>
+        </div>
+      <% end %>
+    </div>
+
+  </div>
+</div>

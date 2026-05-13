@@ -301,6 +301,11 @@ class FinancialAnalysisGenerator
       - Effet de ciseau : distinguer explicitement une PREMIÈRE PÉRIODE (ciseau positif ou négatif)
         et une SECONDE PÉRIODE si la tendance s'inverse ; nommer les causes (décalage entre prix de vente
         et coûts d'approvisionnement, effet de l'assemblage pluriannuel)
+      - Projection sur l'exercice suivant : si l'entreprise produit par assemblage de matières
+        premières achetées sur plusieurs années (ex. champagne), indiquer EXPLICITEMENT que la marge
+        brute par bouteille est susceptible de continuer à se dégrader lors de l'exercice suivant,
+        car les matières premières achetées à prix élevés lors des exercices précédents entrent encore
+        dans la composition des produits — même si le prix de la matière première récente a ralenti
       - Érosion de la marge d'exploitation : expliquer que les coûts fixes (personnel, structures)
         ne peuvent pas être réduits aussi rapidement que le recul de la marge brute, ce qui amplifie
         la compression de l'EBIT en cas de retournement
@@ -340,7 +345,11 @@ class FinancialAnalysisGenerator
         conclure sur le recours ou non à l'endettement externe
       - Approche statique : comparer la dette nette de la DERNIÈRE année à celle de la PREMIÈRE
         année pour dire si elle a baissé ou augmenté sur la période (ne pas se limiter à la variation
-        du dernier exercice) ; commenter le ratio dette nette / EBITDA et la couverture des intérêts ;
+        du dernier exercice) ; commenter le ratio dette nette / EBITDA ;
+        pour la couverture des intérêts, appliquer la RÈGLE IMPÉRATIVE première→dernière année :
+        partir OBLIGATOIREMENT de la valeur de la PREMIÈRE année disponible — ne jamais partir d'un
+        pic intermédiaire même s'il est plus récent (ex. : si couverture = 11,8x en 2022 puis pic
+        à 14,9x en 2023 puis 8,1x en 2025, écrire "passant de 11,8x en 2022 à 8,1x en 2025") ;
         porter un jugement explicite sur le niveau d'endettement
       - Risque de liquidité : ratios général et réduit ; préciser que l'endettement bancaire
         et financier est MAJORITAIREMENT À LONG TERME, ce qui réduit le risque réel de liquidité ;
@@ -349,7 +358,14 @@ class FinancialAnalysisGenerator
 
       **4. Analyse des rentabilités**
       - Rentabilité économique Re = EBIT(1 − t) / Actif économique, décomposée en marge × rotation ;
-        qualifier le niveau obtenu : est-il SATISFAISANT ou MÉDIOCRE ? (utiliser ce mot si c'est le cas)
+        RÈGLE IMPÉRATIVE : calculer Re pour CHAQUE ANNÉE en utilisant le taux d'IS de CETTE MÊME
+        ANNÉE (IS de l'année / résultat courant avant IS de la même année) — ne pas appliquer un
+        taux IS unique à toutes les années ; décrire la TRAJECTOIRE COMPLÈTE : si Re a progressé
+        plusieurs années avant de chuter, écrire explicitement la progression puis la rechute
+        (ex. : "La Re a progressé de X % en [première année] à Y % en [année pic], avant de chuter
+        à Z % en [dernière année]") — ne pas résumer à une simple baisse linéaire entre première et
+        dernière année si ce n'est pas la réalité
+      - qualifier le niveau obtenu : est-il SATISFAISANT ou MÉDIOCRE ? (utiliser ce mot si c'est le cas)
       - Comparer Re au CMPC si disponible : si Re < CMPC, la société détruit de la valeur économique —
         le dire clairement
       - Rentabilité financière Rcp = RN part du groupe / CP part du groupe

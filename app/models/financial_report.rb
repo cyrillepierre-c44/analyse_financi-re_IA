@@ -172,6 +172,21 @@ class FinancialReport < ApplicationRecord
     }
   end
 
+  # ── CAF ───────────────────────────────────────────────────────────────────
+  # Utilise le CFS si disponible, sinon estimation depuis l'IS (RN + DAP + provisions).
+  def caf_calculated
+    if cash_flow_statement
+      cash_flow_statement.self_financing_capacity_calculated
+    else
+      is = income_statement
+      return nil unless is&.net_income
+      is.net_income +
+        (is.depreciation_amortization || 0) +
+        (is.asset_impairment || 0) +
+        (is.provisions_charge || 0)
+    end
+  end
+
   # ── POLITIQUE D'INVESTISSEMENT ────────────────────────────────────────────
   # Ratio de renouvellement = CAPEX / Dotations amortissements (> 1 = expansion)
   def industrial_policy_ratio
@@ -206,10 +221,15 @@ class FinancialReport < ApplicationRecord
   end
 
   # Point mort en € = Charges fixes / Taux MCV
+  # Si cost_structures absent : estimation depuis le CR (charges fixes ≈ MB - EBIT)
   def break_even_point
-    rate = variable_margin_rate
-    return nil unless rate&.positive?
-    total_fixed_costs / rate
+    if total_fixed_costs.positive?
+      rate = variable_margin_rate
+      return nil unless rate&.positive?
+      total_fixed_costs / rate
+    else
+      estimated_break_even_point
+    end
   end
 
   # Marge de sécurité = CA / Point mort - 1 (positif = au-dessus du PM)
@@ -227,5 +247,29 @@ class FinancialReport < ApplicationRecord
     denominator = vm - total_fixed_costs
     return nil unless denominator.positive?
     vm / denominator
+  end
+
+  private
+
+  # Estimation du point mort depuis le CR quand cost_structures est absent.
+  # Charges variables = cost_of_sales (achats marchandises ou MP consommées).
+  # Charges fixes = marge brute - EBIT = toutes les charges opérationnelles fixes.
+  # Taux MCV = marge brute / CA.
+  def estimated_break_even_point
+    is = income_statement
+    return nil unless is&.revenue&.positive? && is.ebit
+
+    variable_costs = is.cost_of_sales ||
+                     (is.merchandise_purchases.to_f + is.merchandise_stock_variation.to_f).presence
+    return nil unless variable_costs
+
+    gross_margin = is.revenue - variable_costs
+    rate         = gross_margin / is.revenue
+    return nil unless rate.positive?
+
+    fixed_costs = gross_margin - is.ebit
+    return nil unless fixed_costs.positive?
+
+    fixed_costs / rate
   end
 end

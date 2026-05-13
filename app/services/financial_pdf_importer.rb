@@ -79,7 +79,11 @@ class FinancialPdfImporter
     json_str = raw[/```json\s*(.*?)\s*```/m, 1] || raw[/\{.*\}/m]
     raise "Aucun JSON trouvé dans la réponse LLM" if json_str.blank?
 
-    JSON.parse(json_str)
+    parsed = JSON.parse(json_str)
+    units = parsed["years"]&.map { |y| y.dig("meta", "unit") } || [ parsed.dig("meta", "unit") ]
+    Rails.logger.info "[FinancialPdfImporter] #{File.basename(@pdf_path)} — units détectés: #{units.inspect}"
+    Rails.logger.debug "[FinancialPdfImporter] JSON brut LLM:\n#{JSON.pretty_generate(parsed)}"
+    parsed
   rescue JSON::ParserError => e
     raise "JSON invalide renvoyé par le LLM : #{e.message}\n#{json_str}"
   end
@@ -97,14 +101,18 @@ class FinancialPdfImporter
       - Retourne UNIQUEMENT un bloc JSON valide (pas d'explication).
       - La clé racine est `"years"` : un tableau avec un objet par exercice fiscal détecté.
       - Utilise `null` pour toute valeur absente ou illisible.
-      - Retourne les montants EXACTEMENT tels qu'écrits dans le document, sans les convertir.
-      - Si le document indique "En millions d'euros", retourne 305.6 (pas 305600000) et indique `"unit": 1000000` dans meta.
-      - Si le document indique "En milliers d'euros", retourne 305600 et indique `"unit": 1000` dans meta.
-      - Si les montants sont déjà en euros entiers, indique `"unit": 1` dans meta.
+      - NOTATION FRANÇAISE : dans les documents comptables français, l'espace est le séparateur de milliers et la virgule est le séparateur décimal. Exemples : "108 713,31" = 108713.31 ; "25 000" = 25000 ; "7 630,27" = 7630.27. Tu DOIS reconstituer le nombre complet, jamais t'arrêter à l'espace. Retourne toujours un nombre JSON valide (point comme décimal, sans espace ni virgule de milliers) : 108713.31, pas 108 ni 108713.
+      - Retourne les montants tels qu'ils apparaissent dans le document (en reconstituant les nombres complets selon la notation française), sans conversion d'unité.
+      - Si le document indique "En millions d'euros" et montre "305,6", retourne 305.6 et indique `"unit": 1000000` dans meta.
+      - Si le document indique "En milliers d'euros" et montre "305 600", retourne 305600 et indique `"unit": 1000` dans meta.
+      - Si les montants sont en euros (mention "Euros", "€" ou pas d'indication d'unité), indique `"unit": 1` dans meta.
+      - IMPORTANT : `unit` représente le multiplicateur pour obtenir des euros. Document en k€ → `unit: 1000`. Document en euros → `unit: 1`.
       - Les montants négatifs doivent être des nombres négatifs.
       - Pour les exercices décalés (ex: avril-mars), fiscal_year = année de clôture (ex: 2024-2025 → fiscal_year: 2025, period_end_date: "2025-03-31").
       - Pour `income_format` : "nature" (PCG, avec marge commerciale/VA) ou "fonction" (IFRS, avec coût des ventes/marge brute).
       - Pour les P&L IFRS "fonction", utilise cost_of_sales, gross_margin, distribution_marketing_costs, administrative_costs.
+      - `dividends_paid` dans `cash_flow_statement` : cherche dans le tableau de flux ET dans la proposition d'affectation du résultat / tableau de variation des capitaux propres / notes aux comptes. C'est le montant effectivement distribué aux actionnaires au titre de l'exercice précédent.
+      - `cash_flow_statement` : même si le document ne présente pas de tableau de flux formalisé, remplis au minimum `net_income`, `depreciation_amortization` et `dividends_paid` depuis les autres sections du document. Ne retourne jamais `null` pour l'objet entier.
 
       ## Structure JSON attendue
       ```json
@@ -254,7 +262,7 @@ class FinancialPdfImporter
         report = find_or_create_report(meta)
         save_income_statement(report, entry["income_statement"], unit)       if entry["income_statement"]
         save_balance_sheet(report, entry["balance_sheet"], unit)             if entry["balance_sheet"]
-        save_cash_flow_statement(report, entry["cash_flow_statement"], unit) if entry["cash_flow_statement"]
+        save_cash_flow_statement(report, entry["cash_flow_statement"] || {}, unit)
         save_cost_structures(report, entry["cost_structures"], unit)         if entry["cost_structures"]&.any?
         reports << report
       end
