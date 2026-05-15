@@ -99,24 +99,37 @@
     </thead>
     <tbody class="divide-y divide-gray-50">
       <%
+        fn = @report.fonction?
+        gm     = is.gross_margin || (is.revenue && is.cost_of_sales ? is.revenue - is.cost_of_sales : nil)
+        gm_prev = prev_is&.gross_margin || (prev_is&.revenue && prev_is&.cost_of_sales ? prev_is.revenue - prev_is.cost_of_sales : nil)
         sig_rows = [
-          { label: "Ventes marchandises",      val: is.merchandise_sales, prev: prev_is&.merchandise_sales, indent: 0 },
-          { label: "− Coût d'achat march.",     val: is.merchandise_purchases && is.merchandise_stock_variation ? (is.merchandise_purchases + is.merchandise_stock_variation) : nil,
-                                               prev: prev_is&.merchandise_purchases && prev_is&.merchandise_stock_variation ? (prev_is.merchandise_purchases + prev_is.merchandise_stock_variation) : nil, indent: 1 },
-          { label: "= Marge commerciale",       val: is.commercial_margin_calculated, prev: prev_is&.commercial_margin_calculated, indent: 0, bold: true, sep: true },
-          { label: "+ Production vendue",       val: is.production_sold,   prev: prev_is&.production_sold,   indent: 1 },
-          { label: "− Autres charges externes", val: is.other_external_expenses, prev: prev_is&.other_external_expenses, indent: 1 },
-          { label: "= Valeur Ajoutée",          val: is.value_added_calculated, prev: prev_is&.value_added_calculated, indent: 0, bold: true, sep: true },
-          { label: "+ Subventions exploit.",    val: is.operating_subsidies, prev: prev_is&.operating_subsidies, indent: 1 },
-          { label: "− Charges de personnel",    val: is.personnel_expenses,  prev: prev_is&.personnel_expenses, indent: 1 },
-          { label: "− Impôts et taxes",         val: is.taxes_and_duties,    prev: prev_is&.taxes_and_duties,   indent: 1 },
-          { label: "= EBE (EBITDA)",            val: is.ebitda_calculated,   prev: prev_is&.ebitda_calculated,  indent: 0, bold: true, sep: true },
-          { label: "− Dotations amort.",        val: is.depreciation_amortization, prev: prev_is&.depreciation_amortization, indent: 1 },
-          { label: "= EBIT",                    val: is.ebit,                prev: prev_is&.ebit,               indent: 0, bold: true, sep: true },
-          { label: "+/− Résultat financier",    val: is.result_financier,    prev: prev_is&.result_financier,   indent: 1 },
-          { label: "+/− Résultat exceptionnel", val: is.exceptional_income.to_f - is.exceptional_expenses.to_f, prev: nil, indent: 1 },
-          { label: "− IS",                      val: is.income_tax,          prev: prev_is&.income_tax,         indent: 1 },
-          { label: "= Résultat net",            val: is.net_income,          prev: prev_is&.net_income,         indent: 0, bold: true, sep: true },
+          # ── IFRS "fonction" (nil si format PCG → sautées) ──
+          { label: "Chiffre d'affaires",       val: fn ? is.revenue : nil,                       prev: fn ? prev_is&.revenue : nil,                       indent: 0 },
+          { label: "  − Coût des ventes",      val: fn ? is.cost_of_sales : nil,                 prev: fn ? prev_is&.cost_of_sales : nil,                 indent: 1 },
+          { label: "= Marge brute",            val: fn ? gm : nil,                               prev: fn ? gm_prev : nil,                                indent: 0, bold: true, sep: true },
+          { label: "  − Frais commerciaux",    val: fn ? is.distribution_marketing_costs : nil,  prev: fn ? prev_is&.distribution_marketing_costs : nil,  indent: 1 },
+          { label: "  − Frais généraux/admin", val: fn ? is.administrative_costs : nil,          prev: fn ? prev_is&.administrative_costs : nil,          indent: 1 },
+
+          # ── PCG "nature" (nil si format IFRS → sautées) ──
+          { label: "Ventes marchandises",      val: !fn ? is.merchandise_sales : nil,            prev: !fn ? prev_is&.merchandise_sales : nil,            indent: 0 },
+          { label: "  − Coût d'achat march.",  val: !fn && is.merchandise_purchases && is.merchandise_stock_variation ? (is.merchandise_purchases + is.merchandise_stock_variation) : nil,
+                                               prev: !fn && prev_is&.merchandise_purchases && prev_is&.merchandise_stock_variation ? (prev_is.merchandise_purchases + prev_is.merchandise_stock_variation) : nil, indent: 1 },
+          { label: "= Marge commerciale",      val: !fn ? is.commercial_margin_calculated : nil, prev: !fn ? prev_is&.commercial_margin_calculated : nil, indent: 0, bold: true, sep: true },
+          { label: "  + Production vendue",    val: !fn ? is.production_sold : nil,              prev: !fn ? prev_is&.production_sold : nil,              indent: 1 },
+          { label: "  − Autres charges ext.",  val: !fn ? is.other_external_expenses : nil,      prev: !fn ? prev_is&.other_external_expenses : nil,      indent: 1 },
+          { label: "= Valeur Ajoutée",         val: !fn ? is.value_added_calculated : nil,       prev: !fn ? prev_is&.value_added_calculated : nil,       indent: 0, bold: true, sep: true },
+          { label: "  + Subventions exploit.", val: !fn ? is.operating_subsidies : nil,          prev: !fn ? prev_is&.operating_subsidies : nil,          indent: 1 },
+          { label: "  − Charges de personnel", val: !fn ? is.personnel_expenses : nil,           prev: !fn ? prev_is&.personnel_expenses : nil,           indent: 1 },
+          { label: "  − Impôts et taxes",      val: !fn ? is.taxes_and_duties : nil,             prev: !fn ? prev_is&.taxes_and_duties : nil,             indent: 1 },
+
+          # ── Commun aux deux formats ──
+          { label: "= EBE (EBITDA)",           val: is.ebitda_calculated,           prev: prev_is&.ebitda_calculated,           indent: 0, bold: true, sep: true },
+          { label: "  − Dotations amort.",     val: is.depreciation_amortization,   prev: prev_is&.depreciation_amortization,   indent: 1 },
+          { label: "= EBIT",                   val: is.ebit,                        prev: prev_is&.ebit,                        indent: 0, bold: true, sep: true },
+          { label: "+/− Résultat financier",   val: is.result_financier,            prev: prev_is&.result_financier,            indent: 1 },
+          { label: "+/− Résultat exception.",  val: (is.exceptional_income || is.exceptional_expenses) ? is.exceptional_income.to_f - is.exceptional_expenses.to_f : nil, prev: nil, indent: 1 },
+          { label: "  − IS",                   val: is.income_tax,                  prev: prev_is&.income_tax,                  indent: 1 },
+          { label: "= Résultat net",           val: is.net_income,                  prev: prev_is&.net_income,                  indent: 0, bold: true, sep: true },
         ]
       %>
       <% sig_rows.each do |row| %>
@@ -140,6 +153,11 @@
       <% end %>
     </tbody>
   </table>
+  <% if @report.fonction? %>
+    <p class="px-5 py-2 text-xs text-gray-400 italic border-t border-gray-50">
+      Format IFRS « fonction » — la Valeur Ajoutée n'est pas isolable (charges présentées par destination, non par nature).
+    </p>
+  <% end %>
 </div>
 <% end %>
 
@@ -344,6 +362,7 @@ document.addEventListener("turbo:load", function() {
       <p class="text-xs text-gray-500 uppercase tracking-wide font-medium mb-3">Effet de levier</p>
       <p class="text-xs text-gray-400 mb-3">Rcp = Re + (Re − i) × D/CP</p>
       <% nd = bs&.net_financial_debt; cp = bs&.total_equity; rcp = @report.return_on_equity %>
+      <% i_after_tax = @report.net_debt_cost_after_tax %>
       <div class="space-y-2">
         <div class="flex justify-between items-center">
           <span class="text-sm text-gray-600">Re (rentabilité éco.)</span>
@@ -355,6 +374,17 @@ document.addEventListener("turbo:load", function() {
             <span class="font-mono font-semibold <%= nd < 0 ? 'text-emerald-600' : '' %>">
               <%= nd < 0 ? "Tréso. nette" : "#{number_with_precision(nd/cp, precision: 2)}×" %>
             </span>
+          </div>
+        <% end %>
+        <% if i_after_tax %>
+          <div class="flex justify-between items-center">
+            <span class="text-sm text-gray-600">Coût dette nette après IS (i)</span>
+            <span class="font-mono font-semibold text-amber-700"><%= pct(i_after_tax) %></span>
+          </div>
+        <% elsif nd&.positive? %>
+          <div class="flex justify-between items-center text-gray-400">
+            <span class="text-sm">Coût dette nette après IS (i)</span>
+            <span class="text-xs italic">non calculable</span>
           </div>
         <% end %>
         <div class="flex justify-between items-center pt-2 border-t border-gray-100">
@@ -394,8 +424,18 @@ document.addEventListener("turbo:load", function() {
       <% end %>
     </div>
     <% else %>
-    <div class="px-6 py-5 text-sm text-gray-400 flex items-center justify-center">
-      Données VA non disponibles
+    <div class="px-6 py-5 text-center">
+      <p class="text-sm font-medium text-gray-500 mb-1">Valeur Ajoutée non calculable</p>
+      <% if @report.fonction? %>
+        <p class="text-xs text-gray-400 leading-relaxed max-w-xs mx-auto">
+          Le format IFRS « fonction » présente les charges par destination (coût des ventes, frais commerciaux…) et non par nature.
+          La Valeur Ajoutée n'est pas isolable sans les annexes aux comptes.
+        </p>
+      <% else %>
+        <p class="text-xs text-gray-400">
+          Données insuffisantes pour calculer la VA (charges externes manquantes).
+        </p>
+      <% end %>
     </div>
     <% end %>
 

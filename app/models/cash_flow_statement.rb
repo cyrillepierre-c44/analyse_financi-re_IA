@@ -4,11 +4,14 @@ class CashFlowStatement < ApplicationRecord
   # ── CAF (méthode additive) ─────────────────────────────────────────────
   # CAF = Résultat net + Dotations amortissements + Dépréciations
   #       + Variation provisions +/- MV/PV cessions
+  # Le résultat net est pris dans le CFS si disponible, sinon dans l'IS lié.
   def self_financing_capacity_calculated
     return self_financing_capacity if self_financing_capacity.present?
-    return nil unless net_income
-    (net_income || 0) +
-    (depreciation_amortization || 0) +
+    rn = net_income || financial_report&.income_statement&.net_income
+    return nil unless rn
+    da = depreciation_amortization || financial_report&.income_statement&.depreciation_amortization || 0
+    rn +
+    da +
     (asset_impairment || 0) +
     (provisions_variation || 0) +
     (gains_losses_on_disposals || 0)

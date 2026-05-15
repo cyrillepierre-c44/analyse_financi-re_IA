@@ -32,9 +32,12 @@ class CompaniesController < ApplicationController
 
         @company = CompanyPdfImporter.call(pdf_path: tmp_path.to_s)
 
+        AnalyticalPreparationJob.perform_later(@company.id)
+
         years_label = @company.financial_reports.order(:fiscal_year).pluck(:fiscal_year).join(", ")
         redirect_to @company,
-                    notice: "Société « #{@company.name} » créée depuis le PDF — exercice(s) : #{years_label}."
+                    notice: "Société « #{@company.name} » créée — exercice(s) : #{years_label}. " \
+                            "Enrichissement du contexte et diagnostic Q&A lancés en arrière-plan."
       rescue => e
         @company = Company.new(country: "France", currency: "EUR", accounting_standard: :pcg)
         flash.now[:alert] = "Erreur lors de l'analyse du PDF : #{e.message}"

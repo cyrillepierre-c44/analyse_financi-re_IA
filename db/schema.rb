@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_12_134921) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_13_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -132,6 +132,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_134921) do
     t.string "ia_context_status", default: "pending"
     t.boolean "is_consolidated", default: false, null: false
     t.string "name", null: false
+    t.string "qa_status", default: "pending", null: false
     t.string "sector"
     t.string "siren"
     t.datetime "updated_at", null: false
@@ -237,12 +238,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_134921) do
 
   create_table "questions", force: :cascade do |t|
     t.string "answer_type", default: "single", null: false
+    t.bigint "company_id"
     t.datetime "created_at", null: false
     t.json "options", default: [], null: false
     t.integer "position", null: false
     t.text "text", null: false
     t.datetime "updated_at", null: false
-    t.index ["position"], name: "index_questions_on_position"
+    t.index ["company_id", "position"], name: "index_questions_on_company_id_and_position", unique: true
+    t.index ["company_id"], name: "index_questions_on_company_id"
   end
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
@@ -255,4 +258,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_134921) do
   add_foreign_key "cost_structures", "financial_reports"
   add_foreign_key "financial_reports", "companies"
   add_foreign_key "income_statements", "financial_reports"
+  add_foreign_key "questions", "companies"
 end

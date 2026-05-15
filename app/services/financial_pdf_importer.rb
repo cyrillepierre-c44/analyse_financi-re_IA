@@ -275,7 +275,8 @@ class FinancialPdfImporter
     period_end    = meta["period_end_date"] ? Date.parse(meta["period_end_date"]) : Date.new(fiscal_year, 12, 31)
     std           = meta["accounting_standard"] || @accounting_standard
     consolidated  = meta.key?("is_consolidated") ? meta["is_consolidated"] : @is_consolidated
-    format        = meta["income_format"] || @income_format
+    raw_format    = meta["income_format"] || @income_format
+    format        = normalize_income_format(raw_format)
 
     @company.financial_reports.find_or_initialize_by(fiscal_year: fiscal_year).tap do |r|
       r.period_end_date     = period_end
@@ -335,6 +336,11 @@ class FinancialPdfImporter
       cs.variable_costs = (item["variable_costs"].to_f * unit).round(2) if item["variable_costs"]
       cs.save!
     end
+  end
+
+  def normalize_income_format(value)
+    return nil if value.nil?
+    { "function" => "fonction", "nature" => "nature", "fonction" => "fonction" }.fetch(value.to_s.downcase, value)
   end
 
   # Multiplie tous les montants numériques par le facteur d'unité (ex: 1000 si PDF en k€)

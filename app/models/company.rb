@@ -1,7 +1,7 @@
 class Company < ApplicationRecord
   has_many :financial_reports,  dependent: :destroy
   has_many :company_answers,    dependent: :destroy
-  has_many :questions,          through: :company_answers
+  has_many :questions,          dependent: :destroy
   has_many :company_documents,  dependent: :destroy
 
   enum :accounting_standard,  { pcg: 0, ifrs: 1 }
@@ -9,6 +9,11 @@ class Company < ApplicationRecord
   enum :ia_context_status,    { pending: "pending", processing: "processing",
                                  ready: "ready", error: "error" },
        prefix: :context
+
+  attribute :qa_status, :string, default: "pending"
+  enum :qa_status, { pending: "pending", processing: "processing",
+                     ready: "ready", error: "error" },
+       prefix: :qa
 
   validates :name, presence: true, uniqueness: { case_sensitive: false }
   validates :fiscal_year_end_month, inclusion: { in: 1..12 }

@@ -21,7 +21,7 @@ class QaGeneratorService
     @reports = company.financial_reports
                       .includes(:income_statement, :balance_sheet, :cash_flow_statement)
                       .order(:fiscal_year)
-    @questions = Question.all
+    @questions = company.questions
   end
 
   def call
@@ -71,13 +71,13 @@ class QaGeneratorService
     @questions.select(&:numerical?).each do |q|
       value = case q.position
               when 1  then compute_cagr_revenue
-              when 8  then compute_break_even(first)
-              when 9  then compute_margin_of_safety(last_r, compute_break_even(last_r))
+              when 8  then lp_context? ? compute_break_even(first) : nil
+              when 9  then lp_context? ? compute_margin_of_safety(last_r, compute_break_even(last_r)) : nil
               when 13 then compute_bfr_days(first)
               when 15 then compute_dio_cost_of_sales(@reports.sort_by(&:fiscal_year)[2] || last_r)
               when 16 then compute_dpo_broad(last_r)
               when 17 then compute_capex_to_da_ratio
-              when 18 then extract_q18_from_context
+              when 18 then lp_context? ? extract_q18_from_context : nil
               when 19 then compute_debt_ratio(last_r)
               when 20 then compute_current_ratio(last_r)
               when 21 then compute_quick_ratio(last_r)
@@ -229,17 +229,28 @@ class QaGeneratorService
   end
 
   def compute_net_debt_cost_after_tax(report)
-    is = report&.income_statement
-    bs = report&.balance_sheet
+    is  = report&.income_statement
+    bs  = report&.balance_sheet
     return nil unless is&.financial_expenses && bs
+
+    dette_nette = bs.net_financial_debt
+    return nil unless dette_nette&.positive?
+
+    # IFRS : financial_expenses = "Coût de l'endettement net" (déjà net trésorerie déduite)
+    #         → valeur directement comparable à la dette nette, peut être négative (trésorerie nette)
+    # PCG  : financial_expenses = charges brutes → on soustrait les produits financiers
+    charges_nettes = if report.ifrs?
+                       is.financial_expenses
+                     else
+                       is.financial_expenses.to_f - is.financial_income.to_f
+                     end
+    return nil unless charges_nettes&.positive?
+
     result_avant_is = is.current_result || safe_sum(is.net_income, is.income_tax)
     return nil unless result_avant_is&.positive? && is.income_tax
-    taux_is       = is.income_tax / result_avant_is
-    charges_nettes = is.financial_expenses - (is.financial_income&.abs || 0)
-    cout_brut      = charges_nettes * (1 - taux_is)
-    dette_nette    = bs.net_financial_debt
-    return nil unless dette_nette&.positive?
-    (cout_brut / dette_nette * 100).round(1)
+    taux_is = is.income_tax / result_avant_is
+
+    (charges_nettes / dette_nette * (1 - taux_is) * 100).round(1)
   end
 
   def compute_roe_group_share(report)
@@ -264,19 +275,35 @@ class QaGeneratorService
       f.options.open_timeout = 10
     end
 
-    response = conn.post("/chat/completions") do |req|
-      req.headers["Authorization"] = "Bearer #{api_key}"
-      req.headers["Content-Type"]  = "application/json"
-      req.body = {
-        model:       MODEL,
-        messages:    [
-          { role: "system", content: system_prompt },
-          { role: "user",   content: build_prompt }
-        ],
-        temperature: 0.1,
-        max_tokens:  2048,
-        response_format: { type: "json_object" }
-      }.to_json
+    body = {
+      model:           MODEL,
+      messages:        [
+        { role: "system", content: system_prompt },
+        { role: "user",   content: build_prompt }
+      ],
+      temperature:     0.1,
+      max_tokens:      4096,
+      response_format: { type: "json_object" }
+    }.to_json
+
+    retries = 0
+    response = loop do
+      r = conn.post("/chat/completions") do |req|
+        req.headers["Authorization"] = "Bearer #{api_key}"
+        req.headers["Content-Type"]  = "application/json"
+        req.body = body
+      end
+
+      if r.status == 429 && retries < 3
+        wait = r.body.dig("error", "message").to_s.match(/wait (\d+) second/)&.captures&.first.to_i
+        wait = [ wait > 0 ? wait + 5 : 65, 120 ].min
+        Rails.logger.info "[QaGeneratorService] 429 rate-limit — attente #{wait}s (tentative #{retries + 1}/3)"
+        sleep wait
+        retries += 1
+        next
+      end
+
+      break r
     end
 
     unless response.status == 200
@@ -494,11 +521,18 @@ class QaGeneratorService
   # Retourne nil si aucune option n'est suffisamment proche (évite les faux positifs).
   def snap_to_option(ai_text, options)
     normalized = ai_text.strip.downcase.gsub(/\s+/, " ")
+
     # 1. Correspondance exacte
     exact = options.find { |o| o.strip.downcase.gsub(/\s+/, " ") == normalized }
     return exact if exact
 
-    # 2. Correspondance par inclusion (l'un contient l'autre à 90 %+ de la longueur)
+    # 2. Correspondance par lettre seule : "a" → option commençant par "a)" ou "a."
+    if normalized =~ /\A[a-z]\z/
+      letter_match = options.find { |o| o.strip.downcase =~ /\A#{Regexp.escape(normalized)}[\.\)]\s/i }
+      return letter_match if letter_match
+    end
+
+    # 3. Correspondance par inclusion (l'un contient l'autre à 85 %+ de la longueur)
     best = options.max_by do |o|
       opt_norm = o.strip.downcase.gsub(/\s+/, " ")
       shorter, longer = [normalized, opt_norm].sort_by(&:length)
@@ -518,5 +552,12 @@ class QaGeneratorService
   def safe_sum(a, b)
     return nil unless a && b
     a + b
+  end
+
+  # Vrai si les questions contiennent des références à Laurent-Perrier (calculs LP-spécifiques)
+  def lp_context?
+    @lp_context ||= @questions.any? { |q|
+      q.text.match?(/Laurent.?Perrier/i)
+    }
   end
 end

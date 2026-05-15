@@ -93,11 +93,11 @@
     <div>
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-gray-700">Contexte analytique (ia_context)</h3>
-        <% unless company.context_processing? %>
+        <% unless company.context_processing? || company.qa_processing? %>
           <%= button_to company_context_preparation_path(company), method: :post,
               class: "text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
               data: { disable_with: "Lancement…" } do %>
-            ✦ Enrichir le contexte
+            ↺ Ré-enrichir le contexte
           <% end %>
         <% end %>
       </div>
