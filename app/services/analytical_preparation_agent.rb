@@ -373,7 +373,8 @@ class AnalyticalPreparationAgent
     end
 
     if res.code.to_i == 429 && retries > 0
-      wait = res.body.match(/Please wait (\d+) seconds/i)&.captures&.first&.to_i || 65
+      raw_wait = res.body.match(/Please wait (\d+) seconds/i)&.captures&.first&.to_i
+      wait = [ raw_wait || 65, 120 ].min  # plafonné à 120s — évite les timestamps Unix mal parsés
       log "  ⚠ Rate limit 429 — pause #{wait}s (#{retries} essai(s) restant(s))…"
       sleep(wait + 2)
       return llm_call(prompt, max_tokens: max_tokens, retries: retries - 1)
