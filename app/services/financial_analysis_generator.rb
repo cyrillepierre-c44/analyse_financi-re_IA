@@ -328,7 +328,9 @@ class FinancialAnalysisGenerator
         puis si une période de recul existe (ex. pandémie), décrire l'effet de ciseau négatif
       - Si production par assemblage pluriannuel (ex. champagne) : signaler la dérive de marge brute
         à venir sur l'exercice suivant du fait des matières premières achetées à prix élevés
-      - Érosion de la marge d'exploitation : les coûts fixes ne s'ajustent pas aussi vite que la marge brute
+      - Érosion de la marge d'exploitation : écrire EXPLICITEMENT que les coûts fixes ne peuvent pas
+        être réduits aussi vite que le recul de la marge brute — c'est la cause directe de l'érosion de
+        la marge d'exploitation ; ne pas se contenter de décrire la baisse de l'EBIT sans en donner la cause
       - Mentionner le taux d'IS apparent (IS / résultat avant IS) et qualifier s'il est normal ou non
       - Si disponible : point mort et marge de sécurité
       - Conclure explicitement que l'analyse des marges montre la **bonne gestion** du groupe
@@ -349,8 +351,13 @@ class FinancialAnalysisGenerator
         qui réduit le besoin d'investissement interne
       - BFR : souligner son poids dans l'actif économique ; si activité saisonnière, indiquer que
         seule la comparaison à même date d'une année à l'autre est pertinente
-      - Stocks : souligner leur importance absolue dans l'actif et en expliquer les causes
-        (gamme très large, multiples produits, volonté de ne pas perdre de ventes faute de stock disponible)
+      - Stocks : souligner leur importance absolue dans l'actif et en expliquer les causes selon le secteur ;
+        pour les secteurs à stocks pluriannuels (champagne, vin, cognac, spiritueux) : expliquer la croissance
+        des stocks par la HAUSSE DU COÛT DES MATIÈRES PREMIÈRES (raisins, céréales…) ET par la BAISSE DES
+        VOLUMES VENDUS (les bouteilles non vendues restent en cave) — ces deux effets combinés gonflent la
+        valeur des stocks même sans stratégie de montée en gamme ;
+        pour les secteurs à rotation rapide (cosmétiques, distribution) : diversité des produits et
+        volonté de ne pas perdre de ventes faute de stock disponible
       - Rotations : DSO, DIO, DPO — lire les valeurs ANNÉE PAR ANNÉE dans le tableau ci-dessus ;
         vérifier si un ratio a connu un creux ou un pic intermédiaire qui change l'interprétation ;
         noter la valeur minimale et l'année où elle apparaît pour chaque ratio ;
@@ -359,8 +366,12 @@ class FinancialAnalysisGenerator
         structurelle de raccourcissement interrompue par un évènement conjoncturel —
         commenter la tendance structurelle ET ce qui l'a interrompue ;
         formuler la tendance et sa cause pour chacun des trois ratios ;
-        si DPO progresse sur la période → dire que les fournisseurs participent davantage
-        au financement des stocks
+        si DSO s'allonge dans un contexte de baisse des volumes de ventes : noter que ce phénomène
+        est fréquent et attendu lorsque les volumes baissent ;
+        si DPO progresse sur la période → dire que les fournisseurs participent davantage au financement
+        des stocks ; si le secteur implique des fournisseurs agricoles (vignerons, viticulteurs) :
+        mentionner explicitement que l'allongement du DPO peut s'interpréter comme une participation
+        de ces producteurs à l'effort financier du groupe
       - Intensité capitalistique (AE / CA)
 
       **3. Analyse des financements**
@@ -371,10 +382,14 @@ class FinancialAnalysisGenerator
         dividendes ET rachats d'actions versés, écrire EXACTEMENT :
         "[Société] a autofinancé ses versements aux actionnaires (dividendes et rachats d'actions)"
         — ne jamais mentionner uniquement les dividendes sans citer les rachats d'actions ;
+        si le contexte sectoriel mentionne que la société pratique des rachats d'actions, les
+        CITER OBLIGATOIREMENT aux côtés des dividendes ;
         conclure sur le recours ou non à l'endettement externe
       - Approche statique : comparer la dette nette de la DERNIÈRE année à celle de la PREMIÈRE
         année pour dire si elle a baissé ou augmenté sur la période (ne pas se limiter à la variation
-        du dernier exercice) ; commenter le ratio dette nette / EBITDA ;
+        du dernier exercice) ; si DN_dernière < DN_première, écrire EXPLICITEMENT qu'elle a baissé
+        sur la période — même si des hausses intermédiaires ont eu lieu ; ne jamais qualifier la
+        tendance de "hausse" si le bilan première→dernière est une baisse ; commenter le ratio dette nette / EBITDA ;
         pour la couverture des intérêts, appliquer la RÈGLE IMPÉRATIVE première→dernière année :
         lire la ligne "Couverture intérêts" dans le tableau ci-dessus COLONNE PAR COLONNE de gauche à droite ;
         la PREMIÈRE VALEUR NON NULLE rencontrée est le point de départ obligatoire — ne jamais
@@ -398,7 +413,10 @@ class FinancialAnalysisGenerator
       - Décrire la TRAJECTOIRE COMPLÈTE de Re : progression puis rechute si c'est la réalité — ne pas
         résumer à une simple variation entre première et dernière année
       - Qualifier le niveau de Re : SATISFAISANT ou MÉDIOCRE — le dire clairement
-      - Comparer Re au CMPC si disponible : si Re < CMPC, la société détruit de la valeur économique
+      - Comparer Re au CMPC : vérifier d'abord dans la section "## Contexte et données sectorielles"
+        si le CMPC (ou WACC) est mentionné — si oui, il EST disponible et la comparaison est OBLIGATOIRE ;
+        si Re < CMPC sur la dernière année, qualifier Re de MÉDIOCRE et dire que la société détruit
+        de la valeur économique — NE JAMAIS écrire "satisfaisante" si Re < CMPC
       - Rentabilité financière Rcp = RN part du groupe / CP part du groupe
       - Lire la ligne "Écart Rcp − Re (pts)" dans le tableau des ratios VALEUR PAR VALEUR ;
         compter le nombre d'années où l'écart est NÉGATIF ou nul et le nombre d'années où il est POSITIF ;
@@ -416,7 +434,8 @@ class FinancialAnalysisGenerator
         sur la Rcp de cette année-là (CP réduits) et le distinguer de la tendance structurelle
       - Effet de levier : Rcp = Re + (Re − coût apparent dette après IS) × (Dette nette / CP) ;
         conclure si l'effet est positif ou négatif pour les actionnaires
-      - Si la capitalisation boursière est disponible : la comparer aux capitaux propres comptables,
+      - Si la capitalisation boursière est disponible (vérifier aussi dans "## Contexte et données
+        sectorielles" — si elle y est mentionnée, elle EST disponible) : la comparer aux capitaux propres comptables,
         chiffrer l'écart en pourcentage ; si la capitalisation est INFÉRIEURE aux CP, écrire
         EXACTEMENT cette formulation : "En valorisant [Société] à X M€, soit Y % de moins que
         ses capitaux propres comptables, les investisseurs RECONNAISSENT que l'entreprise est
