@@ -381,9 +381,9 @@ class FinancialAnalysisGenerator
         période (pas année par année) : si la somme des flux disponibles couvre la somme des
         dividendes ET rachats d'actions versés, écrire EXACTEMENT :
         "[Société] a autofinancé ses versements aux actionnaires (dividendes et rachats d'actions)"
-        — ne jamais mentionner uniquement les dividendes sans citer les rachats d'actions ;
-        si le contexte sectoriel mentionne que la société pratique des rachats d'actions, les
-        CITER OBLIGATOIREMENT aux côtés des dividendes ;
+        — vérifier dans "## Contexte et données sectorielles" si la société pratique des rachats d'actions ;
+        si oui, la formulation OBLIGATOIRE est TOUJOURS "dividendes et rachats d'actions" — jamais "dividendes" seul ;
+        même si les rachats sont faibles (ex. auto-détention 1 %), les citer explicitement ;
         conclure sur le recours ou non à l'endettement externe
       - Approche statique : comparer la dette nette de la DERNIÈRE année à celle de la PREMIÈRE
         année pour dire si elle a baissé ou augmenté sur la période (ne pas se limiter à la variation
@@ -412,11 +412,14 @@ class FinancialAnalysisGenerator
         taux IS unique à toutes les années ; qualifier le taux d'IS : normal (~25-28 %), faible ou élevé
       - Décrire la TRAJECTOIRE COMPLÈTE de Re : progression puis rechute si c'est la réalité — ne pas
         résumer à une simple variation entre première et dernière année
-      - Qualifier le niveau de Re : SATISFAISANT ou MÉDIOCRE — le dire clairement
-      - Comparer Re au CMPC : vérifier d'abord dans la section "## Contexte et données sectorielles"
-        si le CMPC (ou WACC) est mentionné — si oui, il EST disponible et la comparaison est OBLIGATOIRE ;
-        si Re < CMPC sur la dernière année, qualifier Re de MÉDIOCRE et dire que la société détruit
-        de la valeur économique — NE JAMAIS écrire "satisfaisante" si Re < CMPC
+      - Qualifier le niveau de Re — PROCÉDURE OBLIGATOIRE EN 3 ÉTAPES :
+        (1) Lire le CMPC dans "## Contexte et données sectorielles" — s'il y figure, il EST disponible ;
+        (2) Si CMPC disponible : comparer Re de la DERNIÈRE année au CMPC ;
+            → Re < CMPC : qualifier de MÉDIOCRE, écrire "la rentabilité économique est devenue médiocre,
+              inférieure au CMPC de X %, ce qui traduit une destruction de valeur économique" ;
+            → Re > CMPC : qualifier de SATISFAISANTE ;
+        (3) Si CMPC non disponible : qualifier selon le niveau absolu (SATISFAISANT si > 10 %, MÉDIOCRE si < 7 %) ;
+        RÈGLE ABSOLUE : NE JAMAIS écrire "satisfaisante" si Re < CMPC — vérifier l'étape (2) avant de conclure
       - Rentabilité financière Rcp = RN part du groupe / CP part du groupe
       - Lire la ligne "Écart Rcp − Re (pts)" dans le tableau des ratios VALEUR PAR VALEUR ;
         compter le nombre d'années où l'écart est NÉGATIF ou nul et le nombre d'années où il est POSITIF ;
@@ -434,13 +437,16 @@ class FinancialAnalysisGenerator
         sur la Rcp de cette année-là (CP réduits) et le distinguer de la tendance structurelle
       - Effet de levier : Rcp = Re + (Re − coût apparent dette après IS) × (Dette nette / CP) ;
         conclure si l'effet est positif ou négatif pour les actionnaires
-      - Si la capitalisation boursière est disponible (vérifier aussi dans "## Contexte et données
-        sectorielles" — si elle y est mentionnée, elle EST disponible) : la comparer aux capitaux propres comptables,
-        chiffrer l'écart en pourcentage ; si la capitalisation est INFÉRIEURE aux CP, écrire
-        EXACTEMENT cette formulation : "En valorisant [Société] à X M€, soit Y % de moins que
-        ses capitaux propres comptables, les investisseurs RECONNAISSENT que l'entreprise est
-        dans une phase de destruction de valeur pour ses actionnaires." — le verbe "reconnaissent"
-        est obligatoire ; bannir "reflète", "traduit une perception", "perception prudente"
+      - Capitalisation boursière — RÈGLE IMPÉRATIVE :
+        Lire dans "## Contexte et données sectorielles" si une capitalisation boursière y est mentionnée.
+        Si oui, ce paragraphe NE PEUT PAS être omis — l'omettre est une faute grave.
+        Comparer la capitalisation aux capitaux propres comptables de la DERNIÈRE année et chiffrer
+        l'écart en pourcentage.
+        Si capitalisation < CP : écrire EXACTEMENT :
+        "En valorisant [Société] à X M€, soit Y % de moins que ses capitaux propres comptables,
+        les investisseurs RECONNAISSENT que l'entreprise est dans une phase de destruction de valeur
+        pour ses actionnaires." — le verbe "reconnaissent" est obligatoire ;
+        bannir "reflète", "traduit une perception", "perception prudente"
       - Conclusion OBLIGATOIRE (dernier paragraphe de la section 4, commençant par "En conclusion,") :
         synthèse double perspective — actionnaires (Rcp, dividendes, signal boursier) et
         prêteurs (Re vs CMPC, couverture des intérêts, solvabilité) — la note NE PEUT PAS
