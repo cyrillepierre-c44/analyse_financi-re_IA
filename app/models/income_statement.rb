@@ -29,11 +29,16 @@ class IncomeStatement < ApplicationRecord
 
   # EBE = VA + Subventions d'exploitation - Charges personnel - Impôts & taxes
   # En l'absence de charges personnel (gérant non salarié), on accepte nil → 0
+  # Fallback IFRS "fonction" : EBITDA = EBIT + Dotations aux amortissements
   def ebitda_calculated
     return ebitda if ebitda.present?
     va = value_added_calculated
-    return nil unless va
-    va + (operating_subsidies || 0) - (personnel_expenses || 0) - (taxes_and_duties || 0)
+    return va + (operating_subsidies || 0) - (personnel_expenses || 0) - (taxes_and_duties || 0) if va
+    return ebit + depreciation_amortization if ebit && depreciation_amortization
+    # Fallback : DAP depuis le tableau de flux (IFRS "fonction" — DAP non isolée dans l'IS)
+    cfs_dap = financial_report.cash_flow_statement&.depreciation_amortization
+    return ebit + cfs_dap if ebit && cfs_dap
+    nil
   end
 
   # ── RATIOS D'ANALYSE DES MARGES ────────────────────────────────────────
@@ -63,8 +68,10 @@ class IncomeStatement < ApplicationRecord
   # ── ANALYSE DU POINT MORT ─────────────────────────────────────────────
   # (nécessite les données de cost_structures)
 
+  # IFRS : financial_expenses = coût endettement NET (peut être négatif si tréso nette)
+  # → result_financier = -financial_expenses (on n'exige pas financial_income)
   def result_financier
-    return nil unless financial_income && financial_expenses
-    financial_income - financial_expenses
+    return nil if financial_income.nil? && financial_expenses.nil?
+    (financial_income || 0) - (financial_expenses || 0)
   end
 end

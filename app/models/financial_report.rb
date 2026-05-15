@@ -60,19 +60,55 @@ class FinancialReport < ApplicationRecord
     nd = balance_sheet&.net_financial_debt
     cp = balance_sheet&.total_equity
     return nil unless re && nd && cp&.positive?
+    return nil unless nd.positive?  # Pas de levier si trésorerie nette positive
 
     cost_after_tax = if debt_cost_before_tax
                        debt_cost_before_tax * (1 - tax_rate)
-                     elsif income_statement&.financial_expenses && nd.positive?
-                       (income_statement.financial_expenses / nd) * (1 - tax_rate)
+                     elsif ifrs?
+                       # IFRS : financial_expenses = "Coût de l'endettement net" (déjà NET)
+                       # Peut être négatif si position de trésorerie nette (ex: L'Oréal 2016-2020)
+                       charges = income_statement&.financial_expenses
+                       return nil unless charges
+                       (charges / nd) * (1 - tax_rate)
                      else
-                       return nil
+                       # PCG : charges brutes - produits financiers
+                       charges = income_statement&.financial_expenses
+                       income  = income_statement&.financial_income.to_f
+                       return nil unless charges
+                       charges_nettes = charges - income
+                       return nil unless charges_nettes.positive?
+                       (charges_nettes / nd) * (1 - tax_rate)
                      end
 
     re + (re - cost_after_tax) * (nd / cp)
   end
 
   # ── COUVERTURE ET SOLVABILITÉ ─────────────────────────────────────────────
+
+  # Coût de la dette nette après IS = charges nettes / dette nette × (1 − t)
+  # IFRS : financial_expenses = coût endettement net (déjà NET)
+  # PCG  : charges brutes − produits financiers
+  def net_debt_cost_after_tax
+    is = income_statement
+    bs = balance_sheet
+    return nil unless is && bs
+    nd = bs.net_financial_debt
+    return nil unless nd&.positive?
+
+    charges = if ifrs?
+                is.financial_expenses
+              else
+                return nil unless is.financial_expenses
+                is.financial_expenses.to_f - is.financial_income.to_f
+              end
+    return nil unless charges
+
+    result_avant_is = is.current_result ||
+                      (is.net_income && is.income_tax ? is.net_income + is.income_tax : nil)
+    return nil unless result_avant_is&.positive? && is.income_tax
+    taux_is = is.income_tax / result_avant_is
+    (charges / nd) * (1 - taux_is)
+  end
 
   # Taux de couverture des intérêts = EBIT / Charges financières (norme > 3)
   def interest_coverage_ratio
@@ -175,16 +211,19 @@ class FinancialReport < ApplicationRecord
   # ── CAF ───────────────────────────────────────────────────────────────────
   # Utilise le CFS si disponible, sinon estimation depuis l'IS (RN + DAP + provisions).
   def caf_calculated
+    # Priorité : CFS (méthode indirecte complète)
     if cash_flow_statement
-      cash_flow_statement.self_financing_capacity_calculated
-    else
-      is = income_statement
-      return nil unless is&.net_income
-      is.net_income +
-        (is.depreciation_amortization || 0) +
-        (is.asset_impairment || 0) +
-        (is.provisions_charge || 0)
+      result = cash_flow_statement.self_financing_capacity_calculated
+      return result if result.present?
     end
+    # Fallback : estimation depuis l'IS quand le CFS est absent ou incomplet
+    # CAF = RN + DAP + dépréciations + dotations provisions
+    is = income_statement
+    return nil unless is&.net_income
+    is.net_income +
+      (is.depreciation_amortization || 0) +
+      (is.asset_impairment || 0) +
+      (is.provisions_charge || 0)
   end
 
   # ── POLITIQUE D'INVESTISSEMENT ────────────────────────────────────────────

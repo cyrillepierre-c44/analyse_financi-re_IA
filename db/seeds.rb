@@ -283,13 +283,25 @@ end
 puts "\nSeeds terminés."
 
 # ─────────────────────────────────────────────────────────────────────────────
-# QUESTIONS — DIAGNOSTIC RAPIDE Q&A
-# Une banque de questions communes à toutes les entreprises.
-# L'IA sélectionne la/les bonne(s) réponse(s) selon les données financières.
+# QUESTIONS — DIAGNOSTIC RAPIDE Q&A — Laurent Perrier
+# Questions spécifiques au cas HEC Laurent Perrier.
+# Associées à la société LP si elle existe en base.
 # ─────────────────────────────────────────────────────────────────────────────
-puts "\nChargement des questions Q&A..."
+puts "\nChargement des questions Q&A Laurent Perrier..."
 
-# Remise à zéro des questions (idempotent via position)
+lp_company = Company.where("LOWER(name) LIKE ? OR LOWER(name) LIKE ?",
+                            "%laurent%perrier%", "%laurent-perrier%").first
+
+unless lp_company
+  puts "  ⚠ Laurent Perrier introuvable en base — questions LP ignorées."
+  puts "  → Importez Laurent Perrier d'abord (rails runner ou upload PDF), puis relancez rails db:seed."
+  puts "\nSeeds terminés."
+  return
+end
+
+puts "  → Questions associées à #{lp_company.name} (id #{lp_company.id})"
+
+# Remise à zéro des questions LP (idempotent via position)
 # Pour ajouter une question : copier un bloc et incrémenter la position.
 QUESTIONS = [
   {
@@ -560,15 +572,15 @@ QUESTIONS = [
   }
 ].freeze
 
-# Supprime les questions dont la position n'est plus dans la liste
+# Supprime les questions LP dont la position n'est plus dans la liste
 positions = QUESTIONS.map { |q| q[:position] }
-Question.where.not(position: positions).destroy_all
+lp_company.questions.where.not(position: positions).destroy_all
 
 QUESTIONS.each do |attrs|
-  q = Question.find_or_initialize_by(position: attrs[:position])
-  q.assign_attributes(attrs)
+  q = lp_company.questions.find_or_initialize_by(position: attrs[:position])
+  q.assign_attributes(attrs.merge(company_id: lp_company.id))
   q.save!
   puts "  Q#{attrs[:position]}. #{attrs[:text][0..70]}…"
 end
 
-puts "\n#{Question.count} question(s) chargée(s)."
+puts "\n#{lp_company.questions.count} question(s) chargée(s) pour #{lp_company.name}."

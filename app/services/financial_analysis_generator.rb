@@ -10,8 +10,9 @@ require "faraday"
 #   text = FinancialAnalysisGenerator.call(company)
 #
 class FinancialAnalysisGenerator
-  MODEL    = "gpt-4o"
-  API_BASE = "https://models.inference.ai.azure.com"
+  MODEL            = "gpt-4o"
+  API_BASE         = "https://models.inference.ai.azure.com"
+  MAX_CONTEXT_CHARS = 4_000  # ia_context tronqué pour rester sous 8k tokens
 
   def self.call(company)
     new(company).call
@@ -194,8 +195,10 @@ class FinancialAnalysisGenerator
 
     # ── Contexte sectoriel et guidage analytique ────────────────────────────
     if @company.ia_context.present?
+      ctx = @company.ia_context.strip
+      ctx = ctx[0, MAX_CONTEXT_CHARS] + "…" if ctx.length > MAX_CONTEXT_CHARS
       lines << "## Contexte et données sectorielles"
-      lines << @company.ia_context.strip
+      lines << ctx
       lines << ""
     end
 
@@ -219,27 +222,51 @@ class FinancialAnalysisGenerator
 
     lines << "### Bilan"
     lines << table_header
-    lines << table_row("Actif économique (M€)",       ->(r){ fmt_m(r.balance_sheet&.economic_assets) })
-    lines << table_row("Stocks (M€)",                 ->(r){ fmt_m(r.balance_sheet&.total_inventory) })
-    lines << table_row("Créances clients (M€)",       ->(r){ fmt_m(r.balance_sheet&.trade_receivables) })
-    lines << table_row("Trésorerie (M€)",             ->(r){ fmt_m((r.balance_sheet&.cash_and_equivalents || 0) + (r.balance_sheet&.short_term_investments || 0)) })
-    lines << table_row("Capitaux propres (M€)",       ->(r){ fmt_m(r.balance_sheet&.total_equity) })
-    lines << table_row("Dettes financières (M€)",     ->(r){ fmt_m((r.balance_sheet&.lt_financial_debt || 0) + (r.balance_sheet&.st_financial_debt || 0)) })
-    lines << table_row("Dette nette (M€)",            ->(r){ fmt_m(r.balance_sheet&.net_financial_debt) })
-    lines << table_row("BFR (M€)",                    ->(r){ fmt_m(r.balance_sheet&.working_capital_requirement) })
+    lines << table_row("Actif économique (M€)",               ->(r){ fmt_m(r.balance_sheet&.economic_assets) })
+    lines << table_row("Goodwill (M€)",                       ->(r){ fmt_m(r.balance_sheet&.goodwill) })
+    lines << table_row("Immos incorporelles nettes ex GW (M€)", ->(r){ fmt_m(r.balance_sheet&.intangible_assets_net) })
+    lines << table_row("Immos corporelles nettes (M€)",       ->(r){ fmt_m(r.balance_sheet&.tangible_assets_net) })
+    lines << table_row("Stocks (M€)",                         ->(r){ fmt_m(r.balance_sheet&.total_inventory) })
+    lines << table_row("Créances clients (M€)",               ->(r){ fmt_m(r.balance_sheet&.trade_receivables) })
+    lines << table_row("Trésorerie (M€)",                     ->(r){ fmt_m((r.balance_sheet&.cash_and_equivalents || 0) + (r.balance_sheet&.short_term_investments || 0)) })
+    lines << table_row("Capitaux propres (M€)",               ->(r){ fmt_m(r.balance_sheet&.total_equity) })
+    lines << table_row("Dettes financières (M€)",             ->(r){ fmt_m((r.balance_sheet&.lt_financial_debt || 0) + (r.balance_sheet&.st_financial_debt || 0)) })
+    lines << table_row("Dette nette (M€)",                    ->(r){ fmt_m(r.balance_sheet&.net_financial_debt) })
+    dn_first = @reports.first.balance_sheet&.net_financial_debt
+    dn_last  = @reports.last.balance_sheet&.net_financial_debt
+    if dn_first && dn_last
+      delta_dn  = ((dn_last - dn_first) / 1_000_000.0).round(1)
+      direction = delta_dn < 0 ? "BAISSÉ" : "AUGMENTÉ"
+      lines << "| Tendance DN (#{@reports.first.fiscal_year}→#{@reports.last.fiscal_year}) | #{direction} de #{delta_dn.abs} M€ sur la période ||||||"
+    end
+    lines << table_row("BFR (M€)",                            ->(r){ fmt_m(r.balance_sheet&.working_capital_requirement) })
     lines << ""
 
     lines << "### Ratios clés"
     lines << table_header
     lines << table_row("Re — rentabilité éco. %",    ->(r){ fmt_pct_ratio(r.economic_return) })
-    lines << table_row("ROE (RN/CP) %",              ->(r){ fmt_pct_ratio(r.return_on_equity) })
+    lines << table_row("ROE / Rcp (RN/CP) %",        ->(r){ fmt_pct_ratio(r.return_on_equity) })
+    lines << table_row("Écart Rcp − Re (pts)",        ->(r){
+      re  = r.economic_return
+      roe = r.return_on_equity
+      next "—" unless re && roe
+      diff = ((roe - re) * 100).round(1)
+      diff > 0 ? "+#{diff}" : diff.to_s
+    })
     lines << table_row("Effet de levier financier",  ->(r){ r.balance_sheet&.financial_leverage&.round(2) })
     lines << table_row("Autonomie financière %",     ->(r){ fmt_pct_ratio(r.balance_sheet&.financial_autonomy_ratio) })
     lines << table_row("Liquidité générale",         ->(r){ r.balance_sheet&.general_liquidity_ratio&.round(2) })
     lines << table_row("Liquidité réduite",          ->(r){ r.balance_sheet&.reduced_liquidity_ratio&.round(2) })
     lines << table_row("Dettes nettes / EBITDA",     ->(r){ r.debt_ratio&.round(2) })
     lines << table_row("Couverture intérêts",        ->(r){ r.interest_coverage_ratio&.round(1) })
-    lines << table_row("DSO — clients (j, HT)",      ->(r){ r.days_sales_outstanding&.round(0) })
+    lines << table_row("DSO — clients (j, HT)",      ->(r){ r.days_sales_outstanding&.round(1) })
+    dso_values = @reports.map { |r| r.days_sales_outstanding }
+    lines << "| Δ DSO vs N-1 (j) | — | " + (1...@reports.size).map { |i|
+      prev, curr = dso_values[i-1], dso_values[i]
+      next "—" unless prev && curr
+      diff = (curr - prev).round(1)
+      diff > 0 ? "+#{diff}" : diff.to_s
+    }.join(" | ") + " |"
     lines << table_row("DIO — stocks (j)",           ->(r){ r.days_inventory_outstanding&.round(0) })
     lines << table_row("DPO — fournisseurs (j, large)", ->(r){
       bs      = r.balance_sheet
@@ -250,6 +277,19 @@ class FinancialAnalysisGenerator
       costs     = (ebitda && revenue) ? revenue - ebitda : nil
       (costs&.positive? && suppliers > 0) ? (suppliers / (costs * 1.20) * 365).round(0) : nil
     })
+    dpo_values = @reports.map { |r|
+      bs = r.balance_sheet; is = r.income_statement
+      suppliers = (bs&.trade_payables.to_f + bs&.other_operating_liabilities.to_f)
+      costs = (is&.ebitda_calculated && is&.revenue) ? is.revenue - is.ebitda_calculated : nil
+      (costs&.positive? && suppliers > 0) ? (suppliers / (costs * 1.20) * 365).round(0) : nil
+    }
+    dpo_first = dpo_values.find(&:itself)
+    dpo_last  = dpo_values.reverse.find(&:itself)
+    if dpo_first && dpo_last
+      delta_dpo = dpo_last - dpo_first
+      dir = delta_dpo > 0 ? "AUGMENTÉ (fournisseurs participent DAVANTAGE au financement)" : "BAISSÉ"
+      lines << "| Tendance DPO (#{@reports.first.fiscal_year}→#{@reports.last.fiscal_year}) | #{dir} de #{delta_dpo.abs} j ||||||"
+    end
     lines << table_row("État outil industriel %",    ->(r){ fmt_pct_ratio(r.balance_sheet&.industrial_tool_ratio) })
     lines << table_row("Ratio investissement/DAP",   ->(r){ r.industrial_policy_ratio&.round(2) })
     lines << table_row("Intensité capitalistique",   ->(r){ r.capital_intensity&.round(2) })
@@ -269,11 +309,10 @@ class FinancialAnalysisGenerator
                            .where(company: @company)
                            .order("questions.position")
     if answers.any?
-      lines << "## Diagnostic établi (#{answers.count} questions — réponses validées)"
+      lines << "## Diagnostic établi (#{answers.count} réponses validées)"
       answers.each do |ca|
-        q_text = ca.question.text.gsub(/\s+/, " ").strip
-        opts   = Array(ca.selected_options).join(" ; ")
-        lines << "Q#{ca.question.position}. #{q_text} → #{opts}"
+        opts = Array(ca.selected_options).join(" ; ")
+        lines << "Q#{ca.question.position} → #{opts}"
       end
       lines << ""
     end
@@ -289,49 +328,74 @@ class FinancialAnalysisGenerator
 
       ### Plan de la note (introduction + 4 parties — titres exacts à utiliser) :
 
-      **Introduction** (1 paragraphe, 80–120 mots)
-      - Présentation du groupe : nature (familial, coté, indépendant…), activité principale, positionnement dans son secteur
-      - Contexte sectoriel sur la période analysée : dynamique volumes / prix, cyclicité, tendances structurelles
+      **Introduction** (1 paragraphe)
+      - Présentation du groupe : nature = type d'actionnariat (familial, coté, indépendant, public…) —
+        ne jamais utiliser la nationalité (français, américain…) comme nature ; activité principale ; positionnement dans son secteur
+      - Contexte sectoriel sur la période analysée : dynamique du marché, croissance structurelle ou non
+      - Mentionner que la croissance du CA repose à la fois sur la croissance organique (volumes, prix, mix)
+        ET sur des acquisitions si c'est le cas — ne citer QUE des acquisitions réalisées PENDANT la période analysée,
+        jamais des acquisitions hors-période (postérieures à la dernière année du tableau)
+      - Si les principaux coûts sont variables (coût des ventes, marketing, R&D), le mentionner :
+        c'est un facteur favorable en cas de baisse d'activité car les charges s'ajustent plus vite
 
       **1. Analyse des marges**
-      - Évolution du CA : TCAM, puis décomposer entre effet prix et effet volume — préciser lequel
-        des deux domine et si la hausse des prix compense ou non la baisse des volumes (C5) ;
-        ne pas dire que la hausse des prix "compense" la baisse des volumes si le CA recule en valeur absolue
+      - Évolution du CA : TCAM, puis décomposer entre effet prix, effet volume et effet acquisitions —
+        préciser lequel domine ; ne pas dire que la hausse des prix "compense" la baisse des volumes
+        si le CA recule en valeur absolue
       - Hiérarchie des marges : marge brute → EBITDA → EBIT → marge nette (évolution en % et en M€)
-      - Effet de ciseau : distinguer explicitement une PREMIÈRE PÉRIODE (ciseau positif ou négatif)
-        et une SECONDE PÉRIODE si la tendance s'inverse ; nommer les causes (décalage entre prix de vente
-        et coûts d'approvisionnement, effet de l'assemblage pluriannuel)
-      - Projection sur l'exercice suivant : si l'entreprise produit par assemblage de matières
-        premières achetées sur plusieurs années (ex. champagne), indiquer EXPLICITEMENT que la marge
-        brute par bouteille est susceptible de continuer à se dégrader lors de l'exercice suivant,
-        car les matières premières achetées à prix élevés lors des exercices précédents entrent encore
-        dans la composition des produits — même si le prix de la matière première récente a ralenti
-      - Érosion de la marge d'exploitation : expliquer que les coûts fixes (personnel, structures)
-        ne peuvent pas être réduits aussi rapidement que le recul de la marge brute, ce qui amplifie
-        la compression de l'EBIT en cas de retournement
-      - Si disponible : point mort et marge de sécurité par rapport au point mort
+      - Effet de ciseau : souligner en PREMIER LIEU l'effet de ciseau POSITIF de la croissance —
+        quand le CA croît, la marge brute s'améliore et le poids relatif du coût des ventes diminue ;
+        puis si une période de recul existe (ex. pandémie), décrire l'effet de ciseau négatif
+      - Si production par assemblage pluriannuel (ex. champagne) : signaler la dérive de marge brute
+        à venir sur l'exercice suivant du fait des matières premières achetées à prix élevés
+      - Érosion de la marge d'exploitation : écrire EXPLICITEMENT que les coûts fixes ne peuvent pas
+        être réduits aussi vite que le recul de la marge brute — c'est la cause directe de l'érosion de
+        la marge d'exploitation ; ne pas se contenter de décrire la baisse de l'EBIT sans en donner la cause
+      - Mentionner le taux d'IS apparent (IS / résultat avant IS) et qualifier s'il est normal ou non
+      - Si disponible : point mort et marge de sécurité
+      - Conclure explicitement que l'analyse des marges montre la **bonne gestion** du groupe
 
       **2. Analyse des investissements**
-      - État de l'outil industriel : ratio immo nettes hors terrain / brutes hors terrain (jeune si > 60 %, vieux si < 40 %)
-      - Politique d'investissement : ratio CAPEX / dotations aux amortissements (> 1 = expansion) —
-        dire explicitement si la société continue d'investir et de moderniser ses équipements
-      - BFR : souligner son poids dans l'actif économique ; indiquer EXPLICITEMENT que la SAISONNALITÉ
-        de l'activité interdit tout jugement sur les montants absolus du BFR et de ses composantes à
-        une date de clôture donnée — seule la comparaison de la même date d'une année à l'autre
-        (ex. : 31 mars N vs 31 mars N-1) est pertinente ; utiliser cette règle pour interpréter
-        les composantes du BFR
-      - Stocks : expliquer leur variation sous le DOUBLE EFFET de la hausse du prix des
-        approvisionnements ET de la baisse des volumes de ventes (moins de sorties de stock)
-      - Rotations : DSO, DIO, DPO — analyser la tendance sur l'ENSEMBLE de la période
-        (première année → dernière année), pas uniquement le dernier exercice ;
-        RÈGLE IMPÉRATIVE : comparer TOUJOURS la valeur de la PREMIÈRE année à celle de la
-        DERNIÈRE année pour déterminer la tendance — ne jamais conclure sur la seule variation
-        du dernier exercice vers l'avant-dernier ;
-        formuler la tendance et sa cause : si DSO(dernière année) > DSO(première année)
-        → dire que le DSO s'est allongé sur la période, et que ce n'est pas rare quand les
-        volumes baissent (les clients négocient des délais plus longs) ;
-        si DPO(dernière année) > DPO(première année) → dire que le DPO s'est allongé sur la
-        période, signe que les fournisseurs participent au financement des stocks
+      - Structure des immobilisations : comparer les immobilisations incorporelles nettes (hors goodwill)
+        aux immobilisations corporelles nettes — si les incorporelles dépassent les corporelles, souligner
+        ce que cela révèle du modèle économique (marques, brevets, logiciels sont les vrais actifs)
+      - État de l'outil industriel corporel : ratio immos corporelles nettes / brutes (jeune si > 60 %,
+        vieux si < 40 %, zone intermédiaire entre les deux) ; si le ratio est dans la zone basse ou
+        intermédiaire (≤ 55 %), signaler EXPLICITEMENT que les immobilisations corporelles atteignent
+        un degré d'usure qui va bientôt impliquer des réinvestissements dans ce domaine —
+        NE JAMAIS écrire "sans urgence immédiate" si le ratio est ≤ 55 % : à ce niveau,
+        les réinvestissements sont inéluctables à moyen terme, le dire explicitement
+      - Politique d'investissement : ratio CAPEX total / dotations aux amortissements (> 1 = expansion) ;
+        si le CAPEX en immobilisations corporelles semble faible par rapport aux amortissements,
+        l'expliquer par la conjoncture (ex. 2020-2021) et/ou par la stratégie de croissance externe
+        qui réduit le besoin d'investissement interne
+      - BFR : souligner son poids dans l'actif économique ;
+        si l'activité est saisonnière (clôture ne coïncidant pas avec le pic d'activité, ex. champagne
+        avec clôture au 31 mars après les ventes de Noël), DIRE EXPLICITEMENT que la saisonnalité
+        empêche de porter un jugement sur les montants absolus des composants du BFR — seule leur
+        évolution d'une année à l'autre (à même date) est pertinente ; NE JAMAIS commenter les
+        montants absolus du BFR ou de ses composantes sans cette réserve pour une société saisonnière
+      - Stocks : souligner leur importance absolue dans l'actif et en expliquer les causes selon le secteur ;
+        pour les secteurs à stocks pluriannuels (champagne, vin, cognac, spiritueux) : expliquer la croissance
+        des stocks par la HAUSSE DU COÛT DES MATIÈRES PREMIÈRES (raisins, céréales…) ET par la BAISSE DES
+        VOLUMES VENDUS (les bouteilles non vendues restent en cave) — ces deux effets combinés gonflent la
+        valeur des stocks même sans stratégie de montée en gamme ;
+        pour les secteurs à rotation rapide (cosmétiques, distribution) : diversité des produits et
+        volonté de ne pas perdre de ventes faute de stock disponible
+      - Rotations : DSO, DIO, DPO — lire les valeurs ANNÉE PAR ANNÉE dans le tableau ci-dessus ;
+        vérifier si un ratio a connu un creux ou un pic intermédiaire qui change l'interprétation ;
+        noter la valeur minimale et l'année où elle apparaît pour chaque ratio ;
+        si l'activité n'est pas fortement saisonnière et que le minimum du DSO se situe en milieu
+        de période (pas en première ni en dernière année), cela peut indiquer une tendance
+        structurelle de raccourcissement interrompue par un évènement conjoncturel —
+        commenter la tendance structurelle ET ce qui l'a interrompue ;
+        formuler la tendance et sa cause pour chacun des trois ratios ;
+        si DSO s'allonge dans un contexte de baisse des volumes de ventes : noter que ce phénomène
+        est fréquent et attendu lorsque les volumes baissent ;
+        si DPO progresse sur la période → dire que les fournisseurs participent davantage au financement
+        des stocks ; si le secteur implique des fournisseurs agricoles (vignerons, viticulteurs) :
+        mentionner explicitement que l'allongement du DPO peut s'interpréter comme une participation
+        de ces producteurs à l'effort financier du groupe
       - Intensité capitalistique (AE / CA)
 
       **3. Analyse des financements**
@@ -341,18 +405,31 @@ class FinancialAnalysisGenerator
         période (pas année par année) : si la somme des flux disponibles couvre la somme des
         dividendes ET rachats d'actions versés, écrire EXACTEMENT :
         "[Société] a autofinancé ses versements aux actionnaires (dividendes et rachats d'actions)"
-        — ne jamais mentionner uniquement les dividendes sans citer les rachats d'actions ;
+        — vérifier dans "## Contexte et données sectorielles" si la société pratique des rachats d'actions ;
+        si oui, la formulation OBLIGATOIRE est TOUJOURS "dividendes et rachats d'actions" — jamais "dividendes" seul ;
+        même si les rachats sont faibles (ex. auto-détention 1 %), les citer explicitement ;
         conclure sur le recours ou non à l'endettement externe
       - Approche statique : comparer la dette nette de la DERNIÈRE année à celle de la PREMIÈRE
         année pour dire si elle a baissé ou augmenté sur la période (ne pas se limiter à la variation
-        du dernier exercice) ; commenter le ratio dette nette / EBITDA ;
+        du dernier exercice) ;
+        CALCUL OBLIGATOIRE : comparer DN_dernière à DN_première en valeur absolue ;
+        si DN_dernière < DN_première → écrire "la dette nette a baissé sur la période, passant de X à Y M€" ;
+        si DN_dernière > DN_première → écrire "la dette nette a augmenté sur la période, passant de X à Y M€" ;
+        la qualification DOIT être cohérente avec les chiffres cités — ne jamais écrire "augmenté"
+        si les chiffres montrent une baisse, ni "baissé" si les chiffres montrent une hausse ;
+        commenter le ratio dette nette / EBITDA ;
         pour la couverture des intérêts, appliquer la RÈGLE IMPÉRATIVE première→dernière année :
-        partir OBLIGATOIREMENT de la valeur de la PREMIÈRE année disponible — ne jamais partir d'un
-        pic intermédiaire même s'il est plus récent (ex. : si couverture = 11,8x en 2022 puis pic
-        à 14,9x en 2023 puis 8,1x en 2025, écrire "passant de 11,8x en 2022 à 8,1x en 2025") ;
+        lire la ligne "Couverture intérêts" dans le tableau ci-dessus COLONNE PAR COLONNE de gauche à droite ;
+        la PREMIÈRE VALEUR NON NULLE rencontrée est le point de départ obligatoire — ne jamais
+        sauter une colonne pour partir d'une année intermédiaire, même si elle semble plus fiable ;
+        (ex. : si couverture = 11,8x en 2022 puis pic à 14,9x en 2023 puis 8,1x en 2025,
+        écrire "passant de 11,8x en 2022 à 8,1x en 2025") ;
         porter un jugement explicite sur le niveau d'endettement
       - Risque de liquidité : ratios général et réduit ; préciser que l'endettement bancaire
         et financier est MAJORITAIREMENT À LONG TERME, ce qui réduit le risque réel de liquidité ;
+        si la société dispose de lignes de crédit confirmées non utilisées et/ou d'une participation
+        dans une société cotée en Bourse (ex. Sanofi pour L'Oréal), les mentionner EXPLICITEMENT
+        comme facteurs atténuant le risque de liquidité apparent ;
         distinguer risque de LIQUIDITÉ (CT) et risque de SOLVABILITÉ (LT) ;
         conclure explicitement si la société a ou non un problème de solvabilité
 
@@ -360,23 +437,51 @@ class FinancialAnalysisGenerator
       - Rentabilité économique Re = EBIT(1 − t) / Actif économique, décomposée en marge × rotation ;
         RÈGLE IMPÉRATIVE : calculer Re pour CHAQUE ANNÉE en utilisant le taux d'IS de CETTE MÊME
         ANNÉE (IS de l'année / résultat courant avant IS de la même année) — ne pas appliquer un
-        taux IS unique à toutes les années ; décrire la TRAJECTOIRE COMPLÈTE : si Re a progressé
-        plusieurs années avant de chuter, écrire explicitement la progression puis la rechute
-        (ex. : "La Re a progressé de X % en [première année] à Y % en [année pic], avant de chuter
-        à Z % en [dernière année]") — ne pas résumer à une simple baisse linéaire entre première et
-        dernière année si ce n'est pas la réalité
-      - qualifier le niveau obtenu : est-il SATISFAISANT ou MÉDIOCRE ? (utiliser ce mot si c'est le cas)
-      - Comparer Re au CMPC si disponible : si Re < CMPC, la société détruit de la valeur économique —
-        le dire clairement
+        taux IS unique à toutes les années ; qualifier le taux d'IS : normal (~25-28 %), faible ou élevé
+      - Décrire la TRAJECTOIRE COMPLÈTE de Re : progression puis rechute si c'est la réalité — ne pas
+        résumer à une simple variation entre première et dernière année
+      - Qualifier le niveau de Re — PROCÉDURE OBLIGATOIRE EN 3 ÉTAPES :
+        (1) Lire le CMPC dans "## Contexte et données sectorielles" — s'il y figure, il EST disponible ;
+        (2) Si CMPC disponible : comparer Re de la DERNIÈRE année au CMPC ;
+            → Re < CMPC : qualifier de MÉDIOCRE, écrire "la rentabilité économique est devenue médiocre,
+              inférieure au CMPC de X %, ce qui traduit une destruction de valeur économique" ;
+            → Re > CMPC : qualifier de SATISFAISANTE ;
+        (3) Si CMPC non disponible : qualifier selon le niveau absolu (SATISFAISANT si > 10 %, MÉDIOCRE si < 7 %) ;
+        RÈGLE ABSOLUE : NE JAMAIS écrire "satisfaisante" si Re < CMPC — vérifier l'étape (2) avant de conclure
       - Rentabilité financière Rcp = RN part du groupe / CP part du groupe
+      - Lire la ligne "Écart Rcp − Re (pts)" dans le tableau des ratios VALEUR PAR VALEUR ;
+        compter le nombre d'années où l'écart est NÉGATIF ou nul et le nombre d'années où il est POSITIF ;
+        si la majorité des années présente un écart nul ou négatif, conclure que la relation est
+        STRUCTURELLEMENT NÉGATIVE (Rcp < Re) — NE JAMAIS écrire "globalement positif" dans ce cas ;
+        si une seule année présente un écart très élevé par rapport aux autres (ex. +3,9 pts alors que
+        les autres sont entre -1,5 et +0,5), c'est une ANOMALIE — l'identifier, l'expliquer (ex. rachat
+        d'actions qui réduit mécaniquement les CP), et la distinguer de la tendance structurelle ;
+        formuler : "Sur N années, l'écart est négatif ou nul X fois — la relation est structurellement
+        Rcp < Re, sauf en [année anomalie] où [explication]"
+      - Si la société détient une participation financière importante comptabilisée dans les CP —
+        RÈGLE IMPÉRATIVE en 3 étapes :
+        (1) Identifier la participation (ex. Sanofi pour L'Oréal) dans le contexte sectoriel ;
+        (2) Expliquer le mécanisme : les dividendes reçus contribuent au résultat NET mais PAS à l'EBIT ;
+            or la valeur comptable de la participation gonfle les CP → Re calculée sur l'EBIT ne bénéficie
+            pas de ce revenu, mais Rcp le capte via le RN → cela crée STRUCTURELLEMENT un écart Rcp < Re ;
+        (3) Écrire EXPLICITEMENT : "La participation dans [X], comptabilisée dans les CP, gonfle les
+            capitaux propres sans contribuer à l'EBIT — ce qui explique structurellement pourquoi
+            Rcp < Re sur [N] des [Total] années de la période" ;
+        NE JAMAIS omettre cette explication si une participation importante figure au bilan
+      - Si des rachats d'actions ont eu lieu sur une année précise : noter leur effet mécanique
+        sur la Rcp de cette année-là (CP réduits) et le distinguer de la tendance structurelle
       - Effet de levier : Rcp = Re + (Re − coût apparent dette après IS) × (Dette nette / CP) ;
         conclure si l'effet est positif ou négatif pour les actionnaires
-      - Si la capitalisation boursière est disponible : la comparer aux capitaux propres comptables,
-        chiffrer l'écart en pourcentage ; si la capitalisation est INFÉRIEURE aux CP, écrire
-        EXACTEMENT cette formulation : "En valorisant [Société] à X M€, soit Y % de moins que
-        ses capitaux propres comptables, les investisseurs RECONNAISSENT que l'entreprise est
-        dans une phase de destruction de valeur pour ses actionnaires." — le verbe "reconnaissent"
-        est obligatoire ; bannir "reflète", "traduit une perception", "perception prudente"
+      - Capitalisation boursière — RÈGLE IMPÉRATIVE :
+        Lire dans "## Contexte et données sectorielles" si une capitalisation boursière y est mentionnée.
+        Si oui, ce paragraphe NE PEUT PAS être omis — l'omettre est une faute grave.
+        Comparer la capitalisation aux capitaux propres comptables de la DERNIÈRE année et chiffrer
+        l'écart en pourcentage.
+        Si capitalisation < CP : écrire EXACTEMENT :
+        "En valorisant [Société] à X M€, soit Y % de moins que ses capitaux propres comptables,
+        les investisseurs RECONNAISSENT que l'entreprise est dans une phase de destruction de valeur
+        pour ses actionnaires." — le verbe "reconnaissent" est obligatoire ;
+        bannir "reflète", "traduit une perception", "perception prudente"
       - Conclusion OBLIGATOIRE (dernier paragraphe de la section 4, commençant par "En conclusion,") :
         synthèse double perspective — actionnaires (Rcp, dividendes, signal boursier) et
         prêteurs (Re vs CMPC, couverture des intérêts, solvabilité) — la note NE PEUT PAS

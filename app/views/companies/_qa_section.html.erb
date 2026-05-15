@@ -9,21 +9,30 @@
           <p class="text-xs text-gray-400 mt-0.5">
             Généré le <%= last_gen.strftime("%d/%m/%Y à %H:%M") %>
           </p>
-        <% else %>
+        <% elsif company.questions.any? %>
           <p class="text-xs text-gray-400 mt-0.5">
-            <%= Question.count %> questions · analyse par IA
+            <%= company.questions.count %> questions · analyse par IA
           </p>
         <% end %>
       </div>
     </div>
     <div class="flex items-center gap-2">
-      <% if company.company_answers.any? %>
+      <% if company.qa_processing? %>
+        <span class="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full">
+          <svg class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
+          Diagnostic en cours…
+        </span>
+      <% elsif company.qa_pending? && !company.company_answers.any? && company.questions.any? %>
+        <span class="text-xs font-medium text-gray-400 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
+          En attente du contexte IA…
+        </span>
+      <% elsif company.company_answers.any? %>
         <%= form_with url: company_qa_path(company), method: :post do |f| %>
           <%= f.submit "↺ Régénérer",
               class: "text-xs text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
               data: { disable_with: "En cours…" } %>
         <% end %>
-      <% else %>
+      <% elsif company.questions.any? %>
         <%= form_with url: company_qa_path(company), method: :post do |f| %>
           <%= f.submit "✦ Générer le diagnostic",
               class: "bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg cursor-pointer transition-colors shadow-sm",
@@ -33,10 +42,19 @@
     </div>
   </div>
 
-  <% if company.company_answers.any? %>
+  <% if company.questions.none? %>
+    <div class="px-6 py-10 flex flex-col items-center gap-3 text-center">
+      <span class="text-4xl text-gray-200">📋</span>
+      <p class="text-sm font-medium text-gray-500">Aucune question de diagnostic disponible pour cette société.</p>
+      <p class="text-xs text-gray-400 max-w-sm">
+        Les questions sont extraites automatiquement depuis les documents importés.
+        Pour les ajouter, importez un cas pratique ou un document de diagnostic financier via la fiche société.
+      </p>
+    </div>
+  <% elsif company.company_answers.any? %>
     <% answers_by_question = company.company_answers.includes(:question).index_by(&:question_id) %>
     <div class="divide-y divide-gray-100">
-      <% Question.all.each do |question| %>
+      <% company.questions.each do |question| %>
         <% answer = answers_by_question[question.id] %>
         <div class="px-6 py-4 flex gap-4">
           <span class="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold flex items-center justify-center mt-0.5">

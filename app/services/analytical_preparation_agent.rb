@@ -139,18 +139,18 @@ class AnalyticalPreparationAgent
   def summarize_documents(raw_text)
     prompt = <<~PROMPT
       Voici le contenu extrait de documents financiers concernant #{@company.name}.
-      Extrait et structure toutes les informations utiles pour une analyse financière
-      professionnelle : chiffres clés, commentaires de direction, stratégie,
-      événements significatifs, données de marché, gouvernance, actionnariat.
+      Extrait UNIQUEMENT les faits utiles pour une analyse financière :
+      chiffres clés, gouvernance, stratégie, actionnariat, dividendes, rachats,
+      CMPC, capitalisation, participations au bilan, événements significatifs.
 
-      Organise ta réponse en sections claires. Conserve les chiffres précis.
-      Limite-toi à 3000 mots.
+      FORMAT : bullet points uniquement, zéro paragraphe. Max 1500 caractères.
+      Conserve les chiffres et dates précis.
 
       CONTENU BRUT :
       #{raw_text.truncate(40_000)}
     PROMPT
 
-    llm_call(prompt, max_tokens: 4000)
+    llm_call(prompt, max_tokens: 600)
   end
 
   # ── PHASE 3 : RECHERCHE WEB ───────────────────────────────────────────────────
@@ -184,18 +184,18 @@ class AnalyticalPreparationAgent
   def summarize_web(web_text)
     prompt = <<~PROMPT
       Voici des extraits de pages web concernant #{@company.name}.
-      Synthétise les informations utiles pour enrichir une analyse financière
-      professionnelle (contexte sectoriel, positionnement, actualité, données de marché).
+      Extrait UNIQUEMENT les faits utiles pour une analyse financière :
+      positionnement sectoriel, tendances marché, concurrents, CMPC, capitalisation,
+      rachats d'actions, participations, événements récents.
 
-      Élimine les informations redondantes ou non factuelles.
-      Conserve les chiffres et dates précises.
-      Limite-toi à 2000 mots.
+      FORMAT : bullet points uniquement, zéro paragraphe. Max 1000 caractères.
+      Élimine le bruit marketing. Conserve chiffres et dates précis.
 
       CONTENU WEB :
       #{web_text.truncate(30_000)}
     PROMPT
 
-    llm_call(prompt, max_tokens: 2500)
+    llm_call(prompt, max_tokens: 400)
   end
 
   # ── PHASE 4b : FILTRAGE DES LACUNES RÉSOLUES ─────────────────────────────────
@@ -238,41 +238,76 @@ class AnalyticalPreparationAgent
 
     prompt = <<~PROMPT
       Tu es un analyste financier expert (formation ICCF/HEC).
-      Génère un contexte qualitatif complet et structuré pour la société #{@company.name}.
+      Génère un BRIEF DE DONNÉES pour l'analyse financière de #{@company.name}.
 
-      Ce contexte servira à enrichir une analyse financière narrative qui doit
-      répondre à 25 critères professionnels (marges, investissements, BFR, financement,
-      rentabilité, création de valeur, gouvernance, contexte sectoriel).
+      RÔLE DE CE DOCUMENT : ce n'est pas une analyse, c'est une base de faits
+      structurée que l'IA lira en entier pour répondre au Q&A et rédiger l'analyse.
+      FORMAT OBLIGATOIRE : bullet points uniquement — zéro grande phrase, zéro paragraphe.
+      LIMITE STRICTE : 3 500 caractères maximum (priorité à la densité d'information).
 
       DONNÉES FINANCIÈRES DISPONIBLES :
       #{financial_summary}
 
-      CONTEXTE EXISTANT (à compléter/améliorer, ne pas perdre) :
+      CONTEXTE EXISTANT (à conserver/améliorer) :
       #{existing_context.presence || "(aucun)"}
 
-      INFORMATIONS EXTRAITES DES DOCUMENTS :
-      #{doc_knowledge.presence || "(aucun document fourni)"}
+      INFORMATIONS ISSUES DES DOCUMENTS :
+      #{doc_knowledge.presence || "(aucun)"}
 
       INFORMATIONS ISSUES DE RECHERCHES WEB :
-      #{web_knowledge.presence || "(recherche web non disponible)"}
+      #{web_knowledge.presence || "(aucune)"}
 
-      LACUNES IDENTIFIÉES (à traiter si possible) :
-      #{gaps.map { |g| "- #{g}" }.join("\n").presence || "(aucune lacune majeure)"}
+      LACUNES À COMBLER SI POSSIBLE :
+      #{gaps.map { |g| "- #{g}" }.join("\n").presence || "(aucune)"}
 
-      INSTRUCTIONS :
-      - Structure le contexte avec des sections MAJUSCULES (ex: SECTEUR, GOUVERNANCE,
-        STRATÉGIE, CONCURRENCE, CYCLICITÉ, DIVIDENDES, RISQUES, etc.)
-      - Sois factuel et précis : dates, chiffres, noms
-      - Si une information est incertaine, précise-le
-      - Inclus impérativement : positionnement sectoriel, structure actionnariale,
-        politique de distribution, facteurs de risque, tendances sectorielles
-      - Limite : 2500 mots maximum
-      - Langue : français
+      STRUCTURE OBLIGATOIRE (respecter ces sections dans cet ordre) :
 
-      Génère le contexte ia_context complet :
+      ## Identité
+      - Actionnariat : [type exact : familial/coté/fonds/public] ([famille ou fonds], [%])
+      - Cotation : [place boursière ou "non coté"]
+      - Clôture fiscale : [mois]
+      - Saisonnalité : [oui/non + raison en 5 mots max]
+      - CMPC estimé : [X %] ou n/d
+      - Capitalisation boursière : [X M€] ([mois année]) = [Y %] des CP FY[N] ou n/d
+      - Rachats d'actions : [oui, ~X M€/an ou ~X %] / [non]
+
+      ## Secteur & marché
+      - Marché : [nom + taille si connu]
+      - Position concurrentielle : [rang ou description courte]
+      - Concurrents principaux : [liste]
+      - Tendance volumes : [croissance X %/stagnation/déclin + cause]
+      - Tendance prix moyens : [hausse/stable/baisse]
+      - Cyclicité : [oui/non + facteur principal]
+
+      ## Stratégie & croissance
+      - Moteurs de croissance CA : [organique (vol/prix/mix) / acquisitions]
+      - Acquisitions réalisées PENDANT la période analysée uniquement : [liste avec année] ou aucune
+      - Montée en gamme : [oui/non + exemple produit]
+
+      ## Distribution aux actionnaires
+      - Dividendes : [X M€/an approx ou politique]
+      - Rachats d'actions : [oui/non, montant ou % capital]
+
+      ## Participations importantes au bilan
+      - [Nom société] : valeur comptable ~[X M€], dividendes ~[X M€/an] → dans RN mais PAS dans EBIT, gonfle CP
+      (si aucune participation significative : "aucune")
+
+      ## Financement
+      - Structure dette : [LT dominante / CT / mixte]
+      - Lignes de crédit confirmées non utilisées : [X M€] ou n/d
+      - Note de crédit : [notation] ou n/d
+
+      ## Risques clés
+      - [un bullet par risque, max 10 mots chacun]
+
+      ## Événements clés (PENDANT la période analysée uniquement)
+      - [Année] : [événement factuel]
+      (ne pas citer d'événements postérieurs à la dernière année du tableau financier)
+
+      Génère uniquement le brief, sans introduction ni conclusion :
     PROMPT
 
-    result = llm_call(prompt, max_tokens: 3500)
+    result = llm_call(prompt, max_tokens: 1800)
 
     # Réinjecter les marqueurs techniques s'ils ont disparu du contexte généré
     if technical_markers.present?
