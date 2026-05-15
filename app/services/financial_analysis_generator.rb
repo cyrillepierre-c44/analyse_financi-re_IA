@@ -458,9 +458,16 @@ class FinancialAnalysisGenerator
         d'actions qui réduit mécaniquement les CP), et la distinguer de la tendance structurelle ;
         formuler : "Sur N années, l'écart est négatif ou nul X fois — la relation est structurellement
         Rcp < Re, sauf en [année anomalie] où [explication]"
-      - Si la société détient une participation financière importante comptabilisée dans les CP :
-        son résultat (dividendes, plus-values) ne contribue pas à l'EBIT mais sa valeur comptable
-        gonfle les CP → analyser si cela crée structurellement un écart Rcp < Re, et le dire
+      - Si la société détient une participation financière importante comptabilisée dans les CP —
+        RÈGLE IMPÉRATIVE en 3 étapes :
+        (1) Identifier la participation (ex. Sanofi pour L'Oréal) dans le contexte sectoriel ;
+        (2) Expliquer le mécanisme : les dividendes reçus contribuent au résultat NET mais PAS à l'EBIT ;
+            or la valeur comptable de la participation gonfle les CP → Re calculée sur l'EBIT ne bénéficie
+            pas de ce revenu, mais Rcp le capte via le RN → cela crée STRUCTURELLEMENT un écart Rcp < Re ;
+        (3) Écrire EXPLICITEMENT : "La participation dans [X], comptabilisée dans les CP, gonfle les
+            capitaux propres sans contribuer à l'EBIT — ce qui explique structurellement pourquoi
+            Rcp < Re sur [N] des [Total] années de la période" ;
+        NE JAMAIS omettre cette explication si une participation importante figure au bilan
       - Si des rachats d'actions ont eu lieu sur une année précise : noter leur effet mécanique
         sur la Rcp de cette année-là (CP réduits) et le distinguer de la tendance structurelle
       - Effet de levier : Rcp = Re + (Re − coût apparent dette après IS) × (Dette nette / CP) ;
