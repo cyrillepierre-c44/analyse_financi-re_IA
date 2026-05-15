@@ -400,11 +400,15 @@ class FinancialAnalysisGenerator
       - Qualifier le niveau de Re : SATISFAISANT ou MÉDIOCRE — le dire clairement
       - Comparer Re au CMPC si disponible : si Re < CMPC, la société détruit de la valeur économique
       - Rentabilité financière Rcp = RN part du groupe / CP part du groupe
-      - Lire la ligne "Écart Rcp − Re (pts)" dans le tableau des ratios ; identifier les années
-        où l'écart est négatif (Rcp < Re) et celles où il est positif (Rcp > Re) ;
-        si une seule année présente un écart positif très élevé par rapport aux autres, c'est
-        probablement une anomalie — l'identifier et l'expliquer ; conclure sur la relation
-        structurelle (hors anomalie), qui est celle que l'on observe sur les autres années
+      - Lire la ligne "Écart Rcp − Re (pts)" dans le tableau des ratios VALEUR PAR VALEUR ;
+        compter le nombre d'années où l'écart est NÉGATIF ou nul et le nombre d'années où il est POSITIF ;
+        si la majorité des années présente un écart nul ou négatif, conclure que la relation est
+        STRUCTURELLEMENT NÉGATIVE (Rcp < Re) — NE JAMAIS écrire "globalement positif" dans ce cas ;
+        si une seule année présente un écart très élevé par rapport aux autres (ex. +3,9 pts alors que
+        les autres sont entre -1,5 et +0,5), c'est une ANOMALIE — l'identifier, l'expliquer (ex. rachat
+        d'actions qui réduit mécaniquement les CP), et la distinguer de la tendance structurelle ;
+        formuler : "Sur N années, l'écart est négatif ou nul X fois — la relation est structurellement
+        Rcp < Re, sauf en [année anomalie] où [explication]"
       - Si la société détient une participation financière importante comptabilisée dans les CP :
         son résultat (dividendes, plus-values) ne contribue pas à l'EBIT mais sa valeur comptable
         gonfle les CP → analyser si cela crée structurellement un écart Rcp < Re, et le dire
