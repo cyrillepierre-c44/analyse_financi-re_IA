@@ -84,22 +84,38 @@ class AnalyticalPreparationAgent
       Voici le contexte qualitatif déjà disponible :
       #{existing_context.presence || "(aucun)"}
 
-      Ta tâche : identifier toutes les lacunes d'information qui empêcheraient
-      de répondre correctement aux 25 critères d'une analyse ICCF/HEC :
-      - Marges (brute, EBITDA, nette) et leur évolution
-      - Investissements, BFR, DSO, DPO, rotation stocks
-      - Structure financière (dette, gearing, autofinancement)
-      - Rentabilité (ROE, ROCE, création/destruction de valeur)
-      - Contexte sectoriel, positionnement, concurrence
-      - Gouvernance, actionnariat
-      - Dividendes, rachats d'actions
-      - Événements exceptionnels récents
+      DONNÉES DÉJÀ CALCULÉES PAR L'APPLICATION — ne jamais les signaler comme lacunes :
+      - Tous les SIG : CA, EBITDA, EBIT, résultat net, marges brute/EBITDA/EBIT/nette
+      - Ratios de rotation : DSO, DPO, DIO (rotation des stocks en jours)
+      - BFR, actif économique, intensité capitalistique
+      - CAPEX, dotations aux amortissements, ratio CAPEX/DAP
+      - Dette nette, ratio DN/EBITDA, gearing (DN/CP)
+      - Couverture des intérêts (EBIT / charges financières nettes)
+      - Rentabilité économique (Re), rentabilité financière (Rcp), écart Rcp − Re
+      - Free cash flow, CAF, flux opérationnels
+      - Ratios de liquidité générale et réduite
+      - Taux d'IS apparent
+
+      Ta tâche : identifier UNIQUEMENT les lacunes qualitatives ou données externes
+      que l'application ne peut pas calculer seule, et qui sont absentes du contexte
+      qualitatif ci-dessus. Chercher parmi :
+      - CMPC / WACC
+      - Taux d'intérêt moyen sur la dette
+      - Capitalisation boursière et comparaison aux capitaux propres
+      - Notation de crédit
+      - Lignes de crédit confirmées non utilisées
+      - Actionnariat détaillé (% par actionnaire nommé, type familial/fonds/public)
+      - Politique de rachats d'actions (montants, fréquence)
+      - Participations importantes au bilan (société, valeur comptable, nature)
+      - Positionnement sectoriel, concurrents principaux, parts de marché
+      - Acquisitions réalisées pendant la période analysée
+      - Saisonnalité de l'activité et impact sur le BFR
+      - Événements exceptionnels significatifs sur la période
+      - Impact des variations de change sur les résultats
+      - Structure des coûts (fixe vs variable, principaux postes)
 
       Retourne une liste JSON (tableau de strings), chaque élément étant
-      une lacune précise à combler. Exemple :
-      ["Positionnement concurrentiel de #{@company.name} dans son secteur",
-       "Politique de dividendes historique",
-       "Taux d'intérêt moyen sur la dette"]
+      une lacune précise à combler. Si tout est déjà disponible, retourne [].
 
       Réponds UNIQUEMENT avec le tableau JSON, sans texte autour.
     PROMPT
