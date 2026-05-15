@@ -309,10 +309,12 @@ class FinancialAnalysisGenerator
       ### Plan de la note (introduction + 4 parties — titres exacts à utiliser) :
 
       **Introduction** (1 paragraphe)
-      - Présentation du groupe : nature (familial, coté, indépendant…), activité principale, positionnement dans son secteur
+      - Présentation du groupe : nature = type d'actionnariat (familial, coté, indépendant, public…) —
+        ne jamais utiliser la nationalité (français, américain…) comme nature ; activité principale ; positionnement dans son secteur
       - Contexte sectoriel sur la période analysée : dynamique du marché, croissance structurelle ou non
       - Mentionner que la croissance du CA repose à la fois sur la croissance organique (volumes, prix, mix)
-        ET sur des acquisitions si c'est le cas
+        ET sur des acquisitions si c'est le cas — ne citer QUE des acquisitions réalisées PENDANT la période analysée,
+        jamais des acquisitions hors-période (postérieures à la dernière année du tableau)
       - Si les principaux coûts sont variables (coût des ventes, marketing, R&D), le mentionner :
         c'est un facteur favorable en cas de baisse d'activité car les charges s'ajustent plus vite
 
@@ -338,7 +340,9 @@ class FinancialAnalysisGenerator
       - État de l'outil industriel corporel : ratio immos corporelles nettes / brutes (jeune si > 60 %,
         vieux si < 40 %, zone intermédiaire entre les deux) ; si le ratio est dans la zone basse ou
         intermédiaire (≤ 55 %), signaler EXPLICITEMENT que les immobilisations corporelles atteignent
-        un degré d'usure qui va bientôt impliquer des réinvestissements dans ce domaine
+        un degré d'usure qui va bientôt impliquer des réinvestissements dans ce domaine —
+        NE JAMAIS écrire "sans urgence immédiate" si le ratio est ≤ 55 % : à ce niveau,
+        les réinvestissements sont inéluctables à moyen terme, le dire explicitement
       - Politique d'investissement : ratio CAPEX total / dotations aux amortissements (> 1 = expansion) ;
         si le CAPEX en immobilisations corporelles semble faible par rapport aux amortissements,
         l'expliquer par la conjoncture (ex. 2020-2021) et/ou par la stratégie de croissance externe
@@ -372,12 +376,17 @@ class FinancialAnalysisGenerator
         année pour dire si elle a baissé ou augmenté sur la période (ne pas se limiter à la variation
         du dernier exercice) ; commenter le ratio dette nette / EBITDA ;
         pour la couverture des intérêts, appliquer la RÈGLE IMPÉRATIVE première→dernière année :
-        partir OBLIGATOIREMENT de la valeur de la PREMIÈRE année disponible — ne jamais partir d'un
-        pic intermédiaire même s'il est plus récent (ex. : si couverture = 11,8x en 2022 puis pic
-        à 14,9x en 2023 puis 8,1x en 2025, écrire "passant de 11,8x en 2022 à 8,1x en 2025") ;
+        lire la ligne "Couverture intérêts" dans le tableau ci-dessus COLONNE PAR COLONNE de gauche à droite ;
+        la PREMIÈRE VALEUR NON NULLE rencontrée est le point de départ obligatoire — ne jamais
+        sauter une colonne pour partir d'une année intermédiaire, même si elle semble plus fiable ;
+        (ex. : si couverture = 11,8x en 2022 puis pic à 14,9x en 2023 puis 8,1x en 2025,
+        écrire "passant de 11,8x en 2022 à 8,1x en 2025") ;
         porter un jugement explicite sur le niveau d'endettement
       - Risque de liquidité : ratios général et réduit ; préciser que l'endettement bancaire
         et financier est MAJORITAIREMENT À LONG TERME, ce qui réduit le risque réel de liquidité ;
+        si la société dispose de lignes de crédit confirmées non utilisées et/ou d'une participation
+        dans une société cotée en Bourse (ex. Sanofi pour L'Oréal), les mentionner EXPLICITEMENT
+        comme facteurs atténuant le risque de liquidité apparent ;
         distinguer risque de LIQUIDITÉ (CT) et risque de SOLVABILITÉ (LT) ;
         conclure explicitement si la société a ou non un problème de solvabilité
 
