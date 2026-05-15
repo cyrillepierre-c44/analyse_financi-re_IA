@@ -232,6 +232,13 @@ class FinancialAnalysisGenerator
     lines << table_row("Capitaux propres (M€)",               ->(r){ fmt_m(r.balance_sheet&.total_equity) })
     lines << table_row("Dettes financières (M€)",             ->(r){ fmt_m((r.balance_sheet&.lt_financial_debt || 0) + (r.balance_sheet&.st_financial_debt || 0)) })
     lines << table_row("Dette nette (M€)",                    ->(r){ fmt_m(r.balance_sheet&.net_financial_debt) })
+    dn_first = @reports.first.balance_sheet&.net_financial_debt
+    dn_last  = @reports.last.balance_sheet&.net_financial_debt
+    if dn_first && dn_last
+      delta_dn  = ((dn_last - dn_first) / 1_000_000.0).round(1)
+      direction = delta_dn < 0 ? "BAISSÉ" : "AUGMENTÉ"
+      lines << "| Tendance DN (#{@reports.first.fiscal_year}→#{@reports.last.fiscal_year}) | #{direction} de #{delta_dn.abs} M€ sur la période ||||||"
+    end
     lines << table_row("BFR (M€)",                            ->(r){ fmt_m(r.balance_sheet&.working_capital_requirement) })
     lines << ""
 
