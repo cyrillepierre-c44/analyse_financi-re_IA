@@ -277,6 +277,19 @@ class FinancialAnalysisGenerator
       costs     = (ebitda && revenue) ? revenue - ebitda : nil
       (costs&.positive? && suppliers > 0) ? (suppliers / (costs * 1.20) * 365).round(0) : nil
     })
+    dpo_values = @reports.map { |r|
+      bs = r.balance_sheet; is = r.income_statement
+      suppliers = (bs&.trade_payables.to_f + bs&.other_operating_liabilities.to_f)
+      costs = (is&.ebitda_calculated && is&.revenue) ? is.revenue - is.ebitda_calculated : nil
+      (costs&.positive? && suppliers > 0) ? (suppliers / (costs * 1.20) * 365).round(0) : nil
+    }
+    dpo_first = dpo_values.find(&:itself)
+    dpo_last  = dpo_values.reverse.find(&:itself)
+    if dpo_first && dpo_last
+      delta_dpo = dpo_last - dpo_first
+      dir = delta_dpo > 0 ? "AUGMENTÉ (fournisseurs participent DAVANTAGE au financement)" : "BAISSÉ"
+      lines << "| Tendance DPO (#{@reports.first.fiscal_year}→#{@reports.last.fiscal_year}) | #{dir} de #{delta_dpo.abs} j ||||||"
+    end
     lines << table_row("État outil industriel %",    ->(r){ fmt_pct_ratio(r.balance_sheet&.industrial_tool_ratio) })
     lines << table_row("Ratio investissement/DAP",   ->(r){ r.industrial_policy_ratio&.round(2) })
     lines << table_row("Intensité capitalistique",   ->(r){ r.capital_intensity&.round(2) })
