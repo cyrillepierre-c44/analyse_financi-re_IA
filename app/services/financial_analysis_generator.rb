@@ -349,8 +349,12 @@ class FinancialAnalysisGenerator
         si le CAPEX en immobilisations corporelles semble faible par rapport aux amortissements,
         l'expliquer par la conjoncture (ex. 2020-2021) et/ou par la stratégie de croissance externe
         qui réduit le besoin d'investissement interne
-      - BFR : souligner son poids dans l'actif économique ; si activité saisonnière, indiquer que
-        seule la comparaison à même date d'une année à l'autre est pertinente
+      - BFR : souligner son poids dans l'actif économique ;
+        si l'activité est saisonnière (clôture ne coïncidant pas avec le pic d'activité, ex. champagne
+        avec clôture au 31 mars après les ventes de Noël), DIRE EXPLICITEMENT que la saisonnalité
+        empêche de porter un jugement sur les montants absolus des composants du BFR — seule leur
+        évolution d'une année à l'autre (à même date) est pertinente ; NE JAMAIS commenter les
+        montants absolus du BFR ou de ses composantes sans cette réserve pour une société saisonnière
       - Stocks : souligner leur importance absolue dans l'actif et en expliquer les causes selon le secteur ;
         pour les secteurs à stocks pluriannuels (champagne, vin, cognac, spiritueux) : expliquer la croissance
         des stocks par la HAUSSE DU COÛT DES MATIÈRES PREMIÈRES (raisins, céréales…) ET par la BAISSE DES
@@ -387,9 +391,13 @@ class FinancialAnalysisGenerator
         conclure sur le recours ou non à l'endettement externe
       - Approche statique : comparer la dette nette de la DERNIÈRE année à celle de la PREMIÈRE
         année pour dire si elle a baissé ou augmenté sur la période (ne pas se limiter à la variation
-        du dernier exercice) ; si DN_dernière < DN_première, écrire EXPLICITEMENT qu'elle a baissé
-        sur la période — même si des hausses intermédiaires ont eu lieu ; ne jamais qualifier la
-        tendance de "hausse" si le bilan première→dernière est une baisse ; commenter le ratio dette nette / EBITDA ;
+        du dernier exercice) ;
+        CALCUL OBLIGATOIRE : comparer DN_dernière à DN_première en valeur absolue ;
+        si DN_dernière < DN_première → écrire "la dette nette a baissé sur la période, passant de X à Y M€" ;
+        si DN_dernière > DN_première → écrire "la dette nette a augmenté sur la période, passant de X à Y M€" ;
+        la qualification DOIT être cohérente avec les chiffres cités — ne jamais écrire "augmenté"
+        si les chiffres montrent une baisse, ni "baissé" si les chiffres montrent une hausse ;
+        commenter le ratio dette nette / EBITDA ;
         pour la couverture des intérêts, appliquer la RÈGLE IMPÉRATIVE première→dernière année :
         lire la ligne "Couverture intérêts" dans le tableau ci-dessus COLONNE PAR COLONNE de gauche à droite ;
         la PREMIÈRE VALEUR NON NULLE rencontrée est le point de départ obligatoire — ne jamais
