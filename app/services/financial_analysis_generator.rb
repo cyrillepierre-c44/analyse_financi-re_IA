@@ -253,6 +253,13 @@ class FinancialAnalysisGenerator
     lines << table_row("Dettes nettes / EBITDA",     ->(r){ r.debt_ratio&.round(2) })
     lines << table_row("Couverture intérêts",        ->(r){ r.interest_coverage_ratio&.round(1) })
     lines << table_row("DSO — clients (j, HT)",      ->(r){ r.days_sales_outstanding&.round(1) })
+    dso_values = @reports.map { |r| r.days_sales_outstanding }
+    lines << "| Δ DSO vs N-1 (j) | — | " + (1...@reports.size).map { |i|
+      prev, curr = dso_values[i-1], dso_values[i]
+      next "—" unless prev && curr
+      diff = (curr - prev).round(1)
+      diff > 0 ? "+#{diff}" : diff.to_s
+    }.join(" | ") + " |"
     lines << table_row("DIO — stocks (j)",           ->(r){ r.days_inventory_outstanding&.round(0) })
     lines << table_row("DPO — fournisseurs (j, large)", ->(r){
       bs      = r.balance_sheet
@@ -343,8 +350,9 @@ class FinancialAnalysisGenerator
       - Rotations : DSO, DIO, DPO — lire les valeurs ANNÉE PAR ANNÉE dans le tableau ci-dessus ;
         vérifier si un ratio a connu un creux ou un pic intermédiaire qui change l'interprétation ;
         noter la valeur minimale et l'année où elle apparaît pour chaque ratio ;
-        si le minimum du DSO se situe en milieu de période (pas en première ni en dernière année),
-        cela indique une tendance structurelle de raccourcissement interrompue par un évènement —
+        si l'activité n'est pas fortement saisonnière et que le minimum du DSO se situe en milieu
+        de période (pas en première ni en dernière année), cela peut indiquer une tendance
+        structurelle de raccourcissement interrompue par un évènement conjoncturel —
         commenter la tendance structurelle ET ce qui l'a interrompue ;
         formuler la tendance et sa cause pour chacun des trois ratios ;
         si DPO progresse sur la période → dire que les fournisseurs participent davantage
