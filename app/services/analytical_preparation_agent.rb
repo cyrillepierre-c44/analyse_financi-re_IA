@@ -248,9 +248,9 @@ class AnalyticalPreparationAgent
     existing_context  = @company.ia_context.to_s
     financial_summary = build_financial_summary
 
-    # Extraire les marqueurs techniques (Q18_ANSWER, FRANCE_PCT, etc.) pour les réinjecter après génération
+    # Extraire les marqueurs techniques (Q18_ANSWER, FRANCE_PCT, NOTE_*, etc.) pour les réinjecter après génération
     # Ces marqueurs sont des données H1 ou spécifiques non présentes dans les rapports annuels.
-    technical_markers = existing_context.scan(/^(?:Q\d+_ANSWER|FRANCE_PCT)\s*:.*$/i).join("\n")
+    technical_markers = existing_context.scan(/^(?:Q\d+_ANSWER|FRANCE_PCT|NOTE_[A-Z_]+)\s*:.*$/i).join("\n")
 
     prompt = <<~PROMPT
       Tu es un analyste financier expert (formation ICCF/HEC).
