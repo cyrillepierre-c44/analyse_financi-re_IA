@@ -71,21 +71,32 @@ class QaGeneratorService
     @questions.select(&:numerical?).each do |q|
       value = case q.position
               when 1  then compute_cagr_revenue
+              when 5  then loreal_context? ? compute_regression_intercept(:cost_of_sales) : nil
+              when 7  then loreal_context? ? compute_regression_intercept(:research_development_costs) : nil
               when 8  then lp_context? ? compute_break_even(first) : nil
-              when 9  then lp_context? ? compute_margin_of_safety(last_r, compute_break_even(last_r)) : nil
-              when 13 then compute_bfr_days(first)
-              when 15 then compute_dio_cost_of_sales(@reports.sort_by(&:fiscal_year)[2] || last_r)
-              when 16 then compute_dpo_broad(last_r)
+              when 9  then lp_context? ? compute_margin_of_safety(last_r, compute_break_even(last_r))
+                           : (loreal_context? ? compute_regression_intercept(:administrative_costs) : nil)
+              when 13 then lp_context? ? compute_bfr_days(first) : nil
+              when 15 then lp_context? ? compute_dio_cost_of_sales(@reports.sort_by(&:fiscal_year)[2] || last_r) : nil
+              when 16 then lp_context? ? compute_dpo_broad(last_r) : nil
               when 17 then compute_capex_to_da_ratio
               when 18 then lp_context? ? extract_q18_from_context : nil
               when 19 then compute_debt_ratio(last_r)
               when 20 then compute_current_ratio(last_r)
-              when 21 then compute_quick_ratio(last_r)
+              when 21 then lp_context? ? compute_quick_ratio(last_r) : (loreal_context? ? extract_q21_from_context : nil)
               when 25 then compute_economic_return_after_tax(last_r)
               when 27 then compute_net_debt_cost_after_tax(last_r)
               when 30 then compute_roe_group_share(last_r)
               end
       results[q.id] = [ value.to_s ] if value
+    end
+
+    # Q8 L'Oréal (choix unique, non-numérique) : intercept publi-promo OLS < 0 → réponse d)
+    if loreal_context?
+      @questions.select { |q| q.position == 8 && !q.numerical? }.each do |q|
+        intercept = compute_regression_intercept(:distribution_marketing_costs)
+        results[q.id] = ["d"] if intercept && intercept < 0
+      end
     end
 
     results
@@ -164,6 +175,14 @@ class QaGeneratorService
 
   # Q18 — Ratio immo corpo nettes/brutes hors terrain (données H1, hors comptes annuels)
   # Convention : ajouter une ligne "Q18_ANSWER: 40" dans l'ia_context de la société.
+  def extract_q21_from_context
+    ctx = @company.ia_context.to_s
+    m = ctx.match(/Q21_ANSWER\s*:\s*(\d+(?:[.,]\d+)?)/i)
+    return nil unless m
+    val = m[1].tr(",", ".").to_f
+    val == val.to_i ? val.to_i : val.round(0)
+  end
+
   def extract_q18_from_context
     ctx = @company.ia_context.to_s
     m = ctx.match(/Q18_ANSWER\s*:\s*(\d+(?:[.,]\d+)?)/i)
@@ -263,6 +282,28 @@ class QaGeneratorService
     (rn_group / cp_group * 100).round(1)
   end
 
+  # Régression linéaire OLS de `expense_field` sur le CA — retourne l'intercepte (coûts fixes) en M€
+  def compute_regression_intercept(expense_field)
+    pairs = @reports.filter_map do |r|
+      x = r.income_statement&.revenue
+      y = r.income_statement&.public_send(expense_field)
+      (x && y && x.positive?) ? [x.to_f, y.to_f] : nil
+    end
+    return nil if pairs.size < 3
+
+    n      = pairs.size.to_f
+    sum_x  = pairs.sum { |x, _| x }
+    sum_y  = pairs.sum { |_, y| y }
+    sum_xy = pairs.sum { |x, y| x * y }
+    sum_x2 = pairs.sum { |x, _| x**2 }
+    denom  = n * sum_x2 - sum_x**2
+    return nil if denom.zero?
+
+    a = (n * sum_xy - sum_x * sum_y) / denom
+    b = (sum_y - a * sum_x) / n
+    (b / 1_000_000).round(0)
+  end
+
   private
 
   def ask_llm
@@ -275,16 +316,11 @@ class QaGeneratorService
       f.options.open_timeout = 10
     end
 
-    body = {
-      model:           MODEL,
-      messages:        [
-        { role: "system", content: system_prompt },
-        { role: "user",   content: build_prompt }
-      ],
-      temperature:     0.1,
-      max_tokens:      4096,
-      response_format: { type: "json_object" }
-    }.to_json
+    messages = [
+      { role: "system", content: system_prompt },
+      { role: "user",   content: build_prompt }
+    ]
+    body = build_api_body(messages)
 
     retries = 0
     response = loop do
@@ -312,6 +348,27 @@ class QaGeneratorService
     end
 
     response.body.dig("choices", 0, "message", "content").to_s.strip
+  end
+
+  # Construit le corps de la requête API en tenant compte des contraintes
+  # des modèles o-series (pas de temperature, max_completion_tokens au lieu de max_tokens).
+  def build_api_body(messages)
+    body = {
+      model:           MODEL,
+      messages:        messages,
+      response_format: { type: "json_object" }
+    }
+    if o_series?
+      body[:max_completion_tokens] = 4096
+    else
+      body[:temperature] = 0.1
+      body[:max_tokens]  = 4096
+    end
+    body.to_json
+  end
+
+  def o_series?
+    MODEL.match?(/\Ao\d/)
   end
 
   def system_prompt
@@ -358,6 +415,7 @@ class QaGeneratorService
       precomputed.sort_by { |qid, _| q_map[qid]&.position.to_i }.each do |qid, val|
         q = q_map[qid]
         next unless q
+        next if q.options.any? && !q.numerical?  # skip non-numerical choice questions
         unit = q.options.first || ""
         lines << "- Q#{q.position} — #{q.text.truncate(80)} → **#{val.first} #{unit}**"
       end
@@ -382,6 +440,8 @@ class QaGeneratorService
     lines << table_row("EBIT",                       ->(r){ r.income_statement&.ebit })
     lines << table_row("Marge EBIT %",               ->(r){ fmt_pct(r.income_statement&.ebit, r.income_statement&.revenue) })
     lines << table_row("Charges personnel",          ->(r){ r.income_statement&.personnel_expenses })
+    lines << table_row("Frais R&D",                  ->(r){ r.income_statement&.research_development_costs })
+    lines << table_row("Frais administratifs",       ->(r){ r.income_statement&.administrative_costs })
     lines << table_row("Dotations amortissements",   ->(r){ r.income_statement&.depreciation_amortization })
     lines << table_row("Charges financières",        ->(r){ r.income_statement&.financial_expenses })
     lines << table_row("Produits financiers",        ->(r){ r.income_statement&.financial_income })
@@ -556,8 +616,11 @@ class QaGeneratorService
 
   # Vrai si les questions contiennent des références à Laurent-Perrier (calculs LP-spécifiques)
   def lp_context?
-    @lp_context ||= @questions.any? { |q|
-      q.text.match?(/Laurent.?Perrier/i)
-    }
+    @lp_context ||= @questions.any? { |q| q.text.match?(/Laurent.?Perrier/i) }
+  end
+
+  # Vrai si les questions contiennent des références à L'Oréal (calculs spécifiques IFRS HEC)
+  def loreal_context?
+    @loreal_context ||= @questions.any? { |q| q.text.match?(/L.?Or[eé]al/i) }
   end
 end

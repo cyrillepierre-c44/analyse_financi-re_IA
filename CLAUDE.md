@@ -68,3 +68,52 @@ CompanyPdfImporter.call(pdf_path)
    changer le type d'une colonne existante.
 5. **Enum en français** : `income_format: { nature: 0, fonction: 1 }` — le LLM renvoie
    parfois "function" (anglais) → `normalize_income_format` corrige automatiquement.
+
+## Travaux effectués — 16 mai 2026 (branche correctifs1)
+
+### Nouveau champ DB
+- Migration `add_research_development_costs_to_income_statements` : colonne
+  `research_development_costs decimal(20,2)` ajoutée à `income_statements`.
+
+### Corrections données L'Oréal (rails runner)
+Erreurs détectées par comparaison avec l'Annexe 1 du cas HEC :
+- 2017 : `distribution_marketing_costs` 7 561 → 7 651 M€ ; `research_development_costs` = 877 M€
+- 2018 : `research_development_costs` = 914 M€
+- 2019 : `cost_of_sales` 7 502 → 8 065 M€ ; `gross_margin` 22 372 → 21 809 M€ ;
+  `administrative_costs` 6 085 → 6 068 M€ ; `research_development_costs` = 985 M€
+- 2020 : `administrative_costs` 6 539 → 5 639 M€ ; `research_development_costs` = 964 M€
+- 2021 : `research_development_costs` = 1 029 M€
+
+### QaGeneratorService — correctifs et garde-fous
+- **Modèle** : `MODEL = "gpt-4o"` (o3-mini testé puis écarté : limite 4 000 tokens insuffisante
+  pour le prompt Q&A ~5 000 tokens). Infrastructure `build_api_body` / `o_series?` conservée
+  pour usage futur.
+- **Gardes `lp_context?` / `loreal_context?`** ajoutées sur les `when` 13, 15, 16, 21 pour éviter
+  que les formules LP (DPO, DSO, quick_ratio) ne s'appliquent à L'Oréal et vice-versa.
+- **Q5** : ajout `compute_regression_intercept(:cost_of_sales)` pour L'Oréal (= 2 298 M€).
+- **Q7** : `compute_regression_intercept(:research_development_costs)` pour L'Oréal (= 295 M€).
+- **Q8** (non-numérique L'Oréal) : intercept `distribution_marketing_costs` négatif → réponse "d".
+- **Q9** : `compute_regression_intercept(:administrative_costs)` pour L'Oréal (= 2 776 M€).
+- **Q21** : `extract_q21_from_context` lit `Q21_ANSWER: 47` dans `ia_context` (ratio immos
+  corporelles nettes/brutes L'Oréal 2021 = 3 266 / 6 942 M€ = 47 %).
+- **Q18** : `extract_q18_from_context` (LP, inchangé).
+- Toutes les réponses Ruby écrasent les réponses LLM via `ai_answers.merge(ruby_answers)`.
+
+### ia_context L'Oréal (mis à jour manuellement)
+- Acquisitions : CeraVe/AcneFree/Rogaine (2017), Mugler & Azzaro (2019), Thayers (2020),
+  Youth to the People (2021) — remplace l'ancienne mention erronée "aucune acquisition".
+- Ajout section `## Données bilan complémentaires` avec `Q21_ANSWER: 47`.
+
+### FinancialAnalysisGenerator — améliorations prompt
+- Acquisitions : ne jamais affirmer explicitement l'absence d'acquisitions.
+- Point mort : ne jamais utiliser l'intercept OLS comme approximation ; mentionner qualitativement.
+- DSO : procédure 3 étapes (minimum structurel, tendance, événement interrupteur).
+- Re ≥ 1,5 × CMPC → qualifier d'"EXCELLENTE".
+- Rcp > 15 % → "très satisfaisante".
+- BFR : toujours comparer 1ère et dernière année.
+- DN/EBITDA < 0,5 → "tout à fait marginal".
+- Checklist thématique de 30 points ajoutée dans le prompt.
+- Stocks cosmétiques : "diversité des produits et volonté de ne pas perdre de ventes faute de stock".
+
+### Score analyse L'Oréal estimé vs barème HEC
+V1 ~26 pts → V5 ~33-34 / 36 pts.

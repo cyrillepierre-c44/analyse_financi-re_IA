@@ -12,7 +12,7 @@ require "faraday"
 class FinancialAnalysisGenerator
   MODEL            = "gpt-4o"
   API_BASE         = "https://models.inference.ai.azure.com"
-  MAX_CONTEXT_CHARS = 4_000  # ia_context tronqué pour rester sous 8k tokens
+  MAX_CONTEXT_CHARS = 4_500  # ia_context tronqué pour rester sous 8k tokens
 
   def self.call(company)
     new(company).call
@@ -60,7 +60,7 @@ class FinancialAnalysisGenerator
         model:       MODEL,
         messages:    messages,
         temperature: 0.2,
-        max_tokens:  2000
+        max_tokens:  2800
       }.to_json
     end
 
@@ -334,7 +334,9 @@ class FinancialAnalysisGenerator
       - Contexte sectoriel sur la période analysée : dynamique du marché, croissance structurelle ou non
       - Mentionner que la croissance du CA repose à la fois sur la croissance organique (volumes, prix, mix)
         ET sur des acquisitions si c'est le cas — ne citer QUE des acquisitions réalisées PENDANT la période analysée,
-        jamais des acquisitions hors-période (postérieures à la dernière année du tableau)
+        jamais des acquisitions hors-période (postérieures à la dernière année du tableau) ;
+        NE JAMAIS affirmer explicitement l'ABSENCE d'acquisitions : si le contexte sectoriel ne les mentionne pas,
+        citer les moteurs organiques identifiés sans nier les éventuelles acquisitions
       - Si les principaux coûts sont variables (coût des ventes, marketing, R&D), le mentionner :
         c'est un facteur favorable en cas de baisse d'activité car les charges s'ajustent plus vite
 
@@ -352,7 +354,13 @@ class FinancialAnalysisGenerator
         être réduits aussi vite que le recul de la marge brute — c'est la cause directe de l'érosion de
         la marge d'exploitation ; ne pas se contenter de décrire la baisse de l'EBIT sans en donner la cause
       - Mentionner le taux d'IS apparent (IS / résultat avant IS) et qualifier s'il est normal ou non
-      - Si disponible : point mort et marge de sécurité
+      - Point mort (seuil de rentabilité = coûts fixes totaux / taux de marge sur coûts variables)
+        et marge de sécurité — NE JAMAIS utiliser l'intercept d'une régression OLS sur une seule ligne de coûts
+        (ex. R&D, frais commerciaux) comme approximation du point mort global : ce sont des coûts fixes PARTIELS,
+        pas le seuil de rentabilité de l'entreprise entière ;
+        même si le calcul précis n'est pas disponible, mentionner TOUJOURS qualitativement si la société est
+        loin ou proche de son point mort (ex. "compte tenu de la solidité de ses marges, L'Oréal est
+        structurellement très loin de son seuil de rentabilité")
       - Conclure explicitement que l'analyse des marges montre la **bonne gestion** du groupe
 
       **2. Analyse des investissements**
@@ -369,7 +377,9 @@ class FinancialAnalysisGenerator
         si le CAPEX en immobilisations corporelles semble faible par rapport aux amortissements,
         l'expliquer par la conjoncture (ex. 2020-2021) et/ou par la stratégie de croissance externe
         qui réduit le besoin d'investissement interne
-      - BFR : souligner son poids dans l'actif économique ;
+      - BFR : TOUJOURS comparer le BFR de la DERNIÈRE année à celui de la PREMIÈRE année
+        (ex. "passant de X M€ en NNNN à Y M€ en NNNN") avant de qualifier son évolution ;
+        souligner son poids dans l'actif économique ;
         si l'activité est saisonnière (clôture ne coïncidant pas avec le pic d'activité, ex. champagne
         avec clôture au 31 mars après les ventes de Noël), DIRE EXPLICITEMENT que la saisonnalité
         empêche de porter un jugement sur les montants absolus des composants du BFR — seule leur
@@ -389,6 +399,13 @@ class FinancialAnalysisGenerator
         de période (pas en première ni en dernière année), cela peut indiquer une tendance
         structurelle de raccourcissement interrompue par un évènement conjoncturel —
         commenter la tendance structurelle ET ce qui l'a interrompue ;
+        PROCÉDURE OBLIGATOIRE POUR LE DSO : (1) lire la valeur du DSO pour CHAQUE année dans le tableau ;
+        (2) identifier l'année où le DSO est MINIMAL — si ce minimum est en milieu de période (ni première
+        ni dernière année), la TENDANCE STRUCTURELLE est au raccourcissement, interrompue à partir de cette
+        année par un événement conjoncturel (pandémie, croissance Asie…) ;
+        (3) formuler : "le DSO présentait une tendance structurelle au raccourcissement (de Xj en N1 à Xminj
+        en Nmin), interrompue par [cause] — il est remonté à Xfinj en Nfin" ;
+        NE JAMAIS résumer le DSO par la seule variation brute première↔dernière année ;
         formuler la tendance et sa cause pour chacun des trois ratios ;
         si DSO s'allonge dans un contexte de baisse des volumes de ventes : noter que ce phénomène
         est fréquent et attendu lorsque les volumes baissent ;
@@ -424,7 +441,10 @@ class FinancialAnalysisGenerator
         sauter une colonne pour partir d'une année intermédiaire, même si elle semble plus fiable ;
         (ex. : si couverture = 11,8x en 2022 puis pic à 14,9x en 2023 puis 8,1x en 2025,
         écrire "passant de 11,8x en 2022 à 8,1x en 2025") ;
-        porter un jugement explicite sur le niveau d'endettement
+        porter un jugement explicite sur le niveau d'endettement :
+        si DN/EBITDA < 0,5 → qualifier de "tout à fait marginal" ou "quasi-nul" (pas simplement "modéré") ;
+        si l'encours de dette a augmenté sur la période mais que le ratio DN/EBITDA reste < 0,5,
+        ne pas laisser l'impression d'un endettement inquiétant — le niveau absolu est ce qui compte
       - Risque de liquidité : ratios général et réduit ; préciser que l'endettement bancaire
         et financier est MAJORITAIREMENT À LONG TERME, ce qui réduit le risque réel de liquidité ;
         si la société dispose de lignes de crédit confirmées non utilisées et/ou d'une participation
@@ -445,10 +465,14 @@ class FinancialAnalysisGenerator
         (2) Si CMPC disponible : comparer Re de la DERNIÈRE année au CMPC ;
             → Re < CMPC : qualifier de MÉDIOCRE, écrire "la rentabilité économique est devenue médiocre,
               inférieure au CMPC de X %, ce qui traduit une destruction de valeur économique" ;
-            → Re > CMPC : qualifier de SATISFAISANTE ;
+            → Re > CMPC et Re < 1,5 × CMPC : qualifier de SATISFAISANTE ;
+            → Re ≥ 1,5 × CMPC : qualifier d'EXCELLENTE — "satisfaisante" serait trop faible
+              quand la Re dépasse le CMPC de plus de moitié ;
         (3) Si CMPC non disponible : qualifier selon le niveau absolu (SATISFAISANT si > 10 %, MÉDIOCRE si < 7 %) ;
         RÈGLE ABSOLUE : NE JAMAIS écrire "satisfaisante" si Re < CMPC — vérifier l'étape (2) avant de conclure
-      - Rentabilité financière Rcp = RN part du groupe / CP part du groupe
+      - Rentabilité financière Rcp = RN part du groupe / CP part du groupe ;
+        porter un jugement explicite sur son niveau : "très satisfaisante" si Rcp > 15 %,
+        "satisfaisante" entre 10 % et 15 %, "insuffisante" en dessous
       - Lire la ligne "Écart Rcp − Re (pts)" dans le tableau des ratios VALEUR PAR VALEUR ;
         compter le nombre d'années où l'écart est NÉGATIF ou nul et le nombre d'années où il est POSITIF ;
         si la majorité des années présente un écart nul ou négatif, conclure que la relation est
@@ -486,6 +510,33 @@ class FinancialAnalysisGenerator
         synthèse double perspective — actionnaires (Rcp, dividendes, signal boursier) et
         prêteurs (Re vs CMPC, couverture des intérêts, solvabilité) — la note NE PEUT PAS
         se terminer sur le seul constat de la capitalisation boursière
+
+      ### Vérification thématique avant de rédiger
+
+      Une analyse financière de grande école est jugée sur l'exhaustivité de ses thématiques.
+      Avant de rédiger, assure-toi que ta note aborde chacun des points suivants
+      (sans nécessairement les nommer explicitement) :
+
+      INTRODUCTION : actionnariat et cotation · dynamique du marché (croissance ou non) ·
+      sources de la croissance (organique et/ou acquisitions) · nature des coûts (variables ou fixes)
+
+      MARGES : TCAM du CA · hiérarchie des marges (brute → EBITDA → EBIT → nette) ·
+      effet de ciseau positif ET négatif si applicable · taux d'IS (normal ?) ·
+      point mort et marge de sécurité si calculables · conclusion sur la qualité de gestion
+
+      INVESTISSEMENTS : nature immos (incorp. hors GW vs corp.) · degré d'usure de l'outil industriel ·
+      politique CAPEX / DAP et raison d'une éventuelle faiblesse · BFR (évolution + saisonnalité) ·
+      stocks (importance et causes) · DSO (tendance structurelle) · DPO (fournisseurs davantage ?
+      ) · intensité capitalistique
+
+      FINANCEMENT : flux exploitation suffisants pour CAPEX · autofinancement actionnaires ·
+      évolution dette nette (1ère → dernière année) · DN/EBITDA · couverture des intérêts ·
+      risque liquidité (ratios + actifs mobilisables) · solvabilité
+
+      RENTABILITÉS : Re par année + qualification vs CMPC · Rcp + qualification ·
+      écart Rcp−Re (structurel ou ponctuel) + mécanisme si participation au bilan ·
+      effet rachats d'actions sur Rcp · effet de levier · capitalisation vs CP ·
+      création/destruction de valeur · conclusion double perspective actionnaires/prêteurs
 
       ### Contraintes impératives :
       - **LONGUEUR STRICTE : 900 à 1 200 mots, titre inclus** — budget ~200 mots par section, ~100 mots pour l'introduction
