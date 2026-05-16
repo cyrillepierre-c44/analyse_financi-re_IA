@@ -1,5 +1,9 @@
 <%# ── DOCUMENTS & CONTEXTE IA ─────────────────────────────────────────────── %>
-<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
+<turbo-frame id="context-section">
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8"
+     data-controller="context-poller"
+     data-context-poller-active-value="<%= company.context_processing? %>"
+     data-context-poller-interval-value="5000">
   <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
     <div class="flex items-center gap-3">
       <span class="text-lg">🗂️</span>
@@ -145,3 +149,4 @@
 
   </div>
 </div>
+</turbo-frame>

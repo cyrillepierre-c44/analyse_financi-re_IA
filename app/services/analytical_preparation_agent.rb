@@ -256,12 +256,21 @@ class AnalyticalPreparationAgent
       Tu es un analyste financier expert (formation ICCF/HEC).
       Génère un BRIEF DE DONNÉES pour l'analyse financière de #{@company.name}.
 
-      RÔLE DE CE DOCUMENT : ce n'est pas une analyse, c'est une base de faits
-      structurée que l'IA lira en entier pour répondre au Q&A et rédiger l'analyse.
-      FORMAT OBLIGATOIRE : bullet points uniquement — zéro grande phrase, zéro paragraphe.
-      LIMITE STRICTE : 3 500 caractères maximum (priorité à la densité d'information).
+      RÔLE : ce brief est la SEULE source d'information qualitative pour l'IA qui rédigera
+      l'analyse financière et répondra au Q&A. Il doit contenir TOUT ce qui n'est pas
+      calculable à partir des états financiers : actionnariat, secteur, stratégie, CMPC,
+      capitalisation boursière, participations au bilan, risques, événements significatifs.
 
-      DONNÉES FINANCIÈRES DISPONIBLES :
+      FORMAT : bullet points pour les données simples ; 2-3 phrases pour les sujets complexes
+      (secteur, stratégie, participations). Aucune répétition de chiffres déjà dans les états financiers.
+      CIBLE : 3 000 à 3 500 caractères — vise la borne haute pour maximiser la richesse du contexte.
+
+      UTILISE TES CONNAISSANCES GÉNÉRALES : si une information est publiquement connue sur
+      #{@company.name} (participation dans une société cotée, note de crédit, capitalisation
+      boursière, CMPC sectoriel), inscris-la même si absente des documents fournis.
+      "n/d" est acceptable UNIQUEMENT si tu ne disposes d'aucune information fiable sur ce point.
+
+      DONNÉES FINANCIÈRES DISPONIBLES (ne pas répéter) :
       #{financial_summary}
 
       CONTEXTE EXISTANT (à conserver/améliorer) :
@@ -283,41 +292,46 @@ class AnalyticalPreparationAgent
       - Cotation : [place boursière ou "non coté"]
       - Clôture fiscale : [mois]
       - Saisonnalité : [oui/non + raison en 5 mots max]
-      - CMPC estimé : [X %] ou n/d
+      - CMPC estimé : [X % — utilise le CMPC sectoriel si non disponible explicitement]
       - Capitalisation boursière : [X M€] ([mois année]) = [Y %] des CP FY[N] ou n/d
       - Rachats d'actions : [oui, ~X M€/an ou ~X %] / [non]
 
       ## Secteur & marché
-      - Marché : [nom + taille si connu]
-      - Position concurrentielle : [rang ou description courte]
-      - Concurrents principaux : [liste]
-      - Tendance volumes : [croissance X %/stagnation/déclin + cause]
-      - Tendance prix moyens : [hausse/stable/baisse]
+      - Marché : [nom + taille approximative + tendance structurelle de croissance ou stagnation]
+      - Position concurrentielle : [rang ou description — leader/challenger/niche]
+      - Concurrents principaux : [liste avec précision si possible]
+      - Tendance volumes : [croissance X %/stagnation/déclin + cause principale]
+      - Tendance prix moyens : [hausse/stable/baisse + raison si connue]
       - Cyclicité : [oui/non + facteur principal]
+      - Structure des coûts : [principaux postes, part variable vs fixe si connue]
 
       ## Stratégie & croissance
-      - Moteurs de croissance CA : [organique (vol/prix/mix) / acquisitions]
-      - Acquisitions réalisées PENDANT la période analysée uniquement : [liste avec année] ou aucune
-      - Montée en gamme : [oui/non + exemple produit]
+      - Moteurs de croissance CA : [organique (vol/prix/mix) / acquisitions — précise lequel domine]
+      - Acquisitions réalisées PENDANT la période analysée uniquement : [liste avec année et montant si connu] ou aucune
+      - Montée en gamme : [oui/non + exemple produit ou marque]
 
       ## Distribution aux actionnaires
-      - Dividendes : [X M€/an approx ou politique]
-      - Rachats d'actions : [oui/non, montant ou % capital]
+      - Dividendes : [montant M€/an ou €/action, ou taux de distribution approximatif]
+      - Rachats d'actions : [oui/non, montant ou % capital par an]
 
-      ## Participations importantes au bilan
-      - [Nom société] : valeur comptable ~[X M€], dividendes ~[X M€/an] → dans RN mais PAS dans EBIT, gonfle CP
-      (si aucune participation significative : "aucune")
+      ## Participations importantes au bilan — CRITIQUE POUR L'ANALYSE
+      Les dividendes reçus d'une participation comptent dans le résultat NET mais PAS dans l'EBIT.
+      La valeur comptable de la participation gonfle les capitaux propres.
+      Ces deux effets créent structurellement un écart Rcp < Re — l'omettre fausse l'analyse.
+      UTILISE TES CONNAISSANCES GÉNÉRALES sur #{@company.name} pour identifier toute participation significative.
+      - [Nom société] : valeur comptable ~[X M€], dividendes reçus ~[X M€/an] → dans RN mais PAS dans EBIT, gonfle CP
+      (si aucune participation significative après vérification : "aucune")
 
       ## Financement
-      - Structure dette : [LT dominante / CT / mixte]
+      - Structure dette : [LT dominante / CT / mixte — précise si possible LT vs CT en %]
       - Lignes de crédit confirmées non utilisées : [X M€] ou n/d
-      - Note de crédit : [notation] ou n/d
+      - Note de crédit : [notation agence] ou n/d
 
       ## Risques clés
-      - [un bullet par risque, max 10 mots chacun]
+      - [3 à 6 bullets, max 12 mots chacun — risques sectoriels et propres à la société]
 
       ## Événements clés (PENDANT la période analysée uniquement)
-      - [Année] : [événement factuel]
+      - [Année] : [événement factuel concis]
       (ne pas citer d'événements postérieurs à la dernière année du tableau financier)
 
       Génère uniquement le brief, sans introduction ni conclusion :
