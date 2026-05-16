@@ -12,7 +12,7 @@ require "faraday"
 class FinancialAnalysisGenerator
   MODEL            = "gpt-4o"
   API_BASE         = "https://models.inference.ai.azure.com"
-  MAX_CONTEXT_CHARS = 4_500  # ia_context tronqué pour rester sous 8k tokens
+  MAX_CONTEXT_CHARS = 800  # corps ia_context (hors NOTE_*) tronqué pour rester sous 8k tokens
 
   def self.call(company)
     new(company).call
@@ -195,8 +195,13 @@ class FinancialAnalysisGenerator
 
     # ── Contexte sectoriel et guidage analytique ────────────────────────────
     if @company.ia_context.present?
-      ctx = @company.ia_context.strip
-      ctx = ctx[0, MAX_CONTEXT_CHARS] + "…" if ctx.length > MAX_CONTEXT_CHARS
+      ctx_full = @company.ia_context.strip
+      # Les lignes NOTE_* sont toujours injectées intégralement (priorité absolue).
+      # Le reste du contexte est tronqué à MAX_CONTEXT_CHARS.
+      notes = ctx_full.scan(/^NOTE_[A-Z_]+[^\n]*/i).join("\n")
+      ctx_body = ctx_full.gsub(/^NOTE_[A-Z_]+[^\n]*/i, "").squeeze("\n").strip
+      ctx_body = ctx_body[0, MAX_CONTEXT_CHARS] + "…" if ctx_body.length > MAX_CONTEXT_CHARS
+      ctx = [ctx_body, notes.presence].compact.join("\n\n")
       lines << "## Contexte et données sectorielles"
       lines << ctx
       lines << ""
@@ -311,7 +316,7 @@ class FinancialAnalysisGenerator
     if answers.any?
       lines << "## Diagnostic établi (#{answers.count} réponses validées)"
       answers.each do |ca|
-        opts = Array(ca.selected_options).join(" ; ")
+        opts = Array(ca.selected_options).map { |o| o.to_s[0, 100] }.join(" ; ")
         lines << "Q#{ca.question.position} → #{opts}"
       end
       lines << ""
@@ -511,32 +516,18 @@ class FinancialAnalysisGenerator
         prêteurs (Re vs CMPC, couverture des intérêts, solvabilité) — la note NE PEUT PAS
         se terminer sur le seul constat de la capitalisation boursière
 
-      ### Vérification thématique avant de rédiger
+      ### Checklist thématique (exhaustivité obligatoire)
 
-      Une analyse financière de grande école est jugée sur l'exhaustivité de ses thématiques.
-      Avant de rédiger, assure-toi que ta note aborde chacun des points suivants
-      (sans nécessairement les nommer explicitement) :
+      INTRO: actionnariat · marché (croissance/stagnation) · croissance organique+acquisitions · nature coûts (var/fixes)
+      MARGES: TCAM · marges brute→EBITDA→EBIT→nette · ciseau +/- · IS · point mort · bonne gestion
+      INVESTISSEMENTS: immos incorp vs corp · usure outil (nettes/brutes) · CAPEX/DAP · BFR (1ère→dernière année+saisonnalité) · stocks (causes) · DSO · DPO (fournisseurs+) · intensité capitalistique
+      FINANCEMENT: flux exploitation+ · autofinancement CAPEX · autofinancement actionnaires · DN (1ère→dernière) · DN/EBITDA · couverture intérêts · liquidité+solvabilité
+      RENTABILITÉS: Re trajectoire+qualification vs CMPC · Rcp+qualification · écart Rcp−Re+mécanisme · rachats d'actions · levier · capitalisation vs CP · conclusion actionnaires/prêteurs
 
-      INTRODUCTION : actionnariat et cotation · dynamique du marché (croissance ou non) ·
-      sources de la croissance (organique et/ou acquisitions) · nature des coûts (variables ou fixes)
+      ### Notes analytiques spécifiques à cette société
 
-      MARGES : TCAM du CA · hiérarchie des marges (brute → EBITDA → EBIT → nette) ·
-      effet de ciseau positif ET négatif si applicable · taux d'IS (normal ?) ·
-      point mort et marge de sécurité si calculables · conclusion sur la qualité de gestion
-
-      INVESTISSEMENTS : nature immos (incorp. hors GW vs corp.) · degré d'usure de l'outil industriel ·
-      politique CAPEX / DAP et raison d'une éventuelle faiblesse · BFR (évolution + saisonnalité) ·
-      stocks (importance et causes) · DSO (tendance structurelle) · DPO (fournisseurs davantage ?
-      ) · intensité capitalistique
-
-      FINANCEMENT : flux exploitation suffisants pour CAPEX · autofinancement actionnaires ·
-      évolution dette nette (1ère → dernière année) · DN/EBITDA · couverture des intérêts ·
-      risque liquidité (ratios + actifs mobilisables) · solvabilité
-
-      RENTABILITÉS : Re par année + qualification vs CMPC · Rcp + qualification ·
-      écart Rcp−Re (structurel ou ponctuel) + mécanisme si participation au bilan ·
-      effet rachats d'actions sur Rcp · effet de levier · capitalisation vs CP ·
-      création/destruction de valeur · conclusion double perspective actionnaires/prêteurs
+      Si le contexte ci-dessus contient des lignes `NOTE_XXX :`, elles ont **PRIORITÉ ABSOLUE**
+      sur les procédures générales décrites dans ce prompt. Applique-les telles quelles.
 
       ### Contraintes impératives :
       - **LONGUEUR STRICTE : 900 à 1 200 mots, titre inclus** — budget ~200 mots par section, ~100 mots pour l'introduction

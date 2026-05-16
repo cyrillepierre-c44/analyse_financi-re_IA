@@ -99,6 +99,14 @@ class QaGeneratorService
       end
     end
 
+    # Q4 LP (non-numérique) : LP est saisonnière pour les ventes ET pour ses achats (vendanges)
+    if lp_context?
+      @questions.select { |q| q.position == 4 && !q.numerical? }.each do |q|
+        target = snap_to_option("Saisonnière pour les ventes, et pour ses achats.", q.options)
+        results[q.id] = [target] if target
+      end
+    end
+
     results
   end
 
