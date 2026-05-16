@@ -102,15 +102,28 @@
         <% end %>
       </div>
 
-      <%# Affichage des lacunes identifiées %>
+      <%# Lacunes — formulaire de saisie manuelle %>
       <% if company.ia_context_gaps.present? %>
-        <details class="mb-3 text-xs text-gray-500 border border-gray-100 rounded-lg p-3 bg-gray-50">
-          <summary class="cursor-pointer font-medium text-gray-600">Lacunes identifiées lors du dernier enrichissement</summary>
-          <ul class="mt-2 space-y-1 list-disc list-inside">
-            <% company.ia_context_gaps.split("\n").each do |gap| %>
-              <li><%= gap %></li>
+        <% gaps = company.ia_context_gaps.split("\n").map(&:strip).reject(&:blank?) %>
+        <details class="mb-3 border border-amber-200 rounded-lg bg-amber-50" open>
+          <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-amber-800 flex items-center gap-1">
+            ⚠ <%= gaps.size %> donnée(s) manquante(s) — à compléter manuellement
+          </summary>
+          <%= form_with url: fill_gaps_company_ia_context_path(company), method: :post, html: { class: "px-3 pb-3 pt-1 space-y-2" } do |f| %>
+            <% gaps.each do |gap| %>
+              <div class="flex flex-col gap-0.5">
+                <label class="text-xs text-amber-700 font-medium"><%= gap %></label>
+                <%= f.text_field "gap_answers[#{gap}]",
+                    placeholder: "Votre réponse…",
+                    class: "text-xs border border-amber-200 rounded px-2 py-1 w-full bg-white focus:outline-none focus:border-amber-400" %>
+              </div>
             <% end %>
-          </ul>
+            <div class="flex justify-end pt-1">
+              <%= f.submit "Enregistrer dans le contexte",
+                  class: "text-xs font-medium text-amber-700 border border-amber-300 hover:bg-amber-100 px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
+                  data: { disable_with: "…" } %>
+            </div>
+          <% end %>
         </details>
       <% end %>
 
