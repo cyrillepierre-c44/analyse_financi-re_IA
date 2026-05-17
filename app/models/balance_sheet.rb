@@ -75,8 +75,9 @@ class BalanceSheet < ApplicationRecord
 
   # Ratio d'autonomie financière = Capitaux propres / Total passif
   def financial_autonomy_ratio
-    return nil unless total_equity_and_liabilities&.positive?
-    (total_equity || 0) / total_equity_and_liabilities
+    base = total_equity_and_liabilities.presence || total_assets
+    return nil unless base&.positive?
+    (total_equity || 0) / base
   end
 
   # Levier financier = Dettes financières nettes / Capitaux propres

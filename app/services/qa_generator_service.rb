@@ -88,6 +88,13 @@ class QaGeneratorService
               when 27 then compute_net_debt_cost_after_tax(last_r)
               when 30 then compute_roe_group_share(last_r)
               end
+
+      # Fallback générique par analyse du texte de question (sociétés hors LP/Loréal)
+      if value.nil? && !lp_context? && !loreal_context?
+        target_report = detect_target_report(q.text) || last_r
+        value = compute_by_question_text(q.text, target_report)
+      end
+
       results[q.id] = [ value.to_s ] if value
     end
 
@@ -580,6 +587,27 @@ class QaGeneratorService
         - **Marché secondaire** : il existe un marché secondaire entre maisons de Champagne portant sur des bouteilles en cours d'élevage, sans étiquette, ce qui donne une certaine liquidité aux stocks.
         - **Cyclicité** : le secteur est cyclique (sensible aux crises économiques, à la géopolitique, aux changes). En volume, le marché mondial du Champagne est **stagnant** depuis plusieurs décennies (autour de 300 millions de bouteilles/an) : la croissance du chiffre d'affaires provient principalement de la hausse des prix, pas des volumes.
       TEXT
+    elsif sector.match?(/automobile|automotive|voiture|constructeur|véhicule/)
+      <<~TEXT
+        Spécificités du secteur automobile premium/luxe :
+        - Capital très intensif : Capex élevé (10-15 % du CA) pour R&D et outils industriels.
+        - Marges EBITDA typiques : 20-30 % pour les constructeurs premium, supérieures à l'automobile généraliste.
+        - Cyclicité : très sensible au cycle économique, aux taux d'intérêt (financement client) et aux taux de change.
+        - BFR maîtrisé grâce aux acomptes clients sur commandes à terme (délais de livraison longs).
+        - Constructeurs premium/luxe souvent en trésorerie nette positive → résultat financier peut être positif.
+        - IFRS 16 (dettes de location) peut gonfler l'endettement financier apparent.
+        - Goodwill faible si croissance organique (pas de croissance par acquisition).
+        - La rentabilité économique (Re) et le ROE sont structurellement élevés dans le luxe automobile (marges et rotation).
+      TEXT
+    elsif sector.match?(/cosmétique|beauté|luxe|parfum|mode/)
+      <<~TEXT
+        Spécificités du secteur cosmétique/luxe :
+        - Forte intensité publicitaire et marketing (frais commerciaux = 25-35 % du CA).
+        - R&D continue mais à moindre proportion que l'industrie lourde (5-10 % du CA).
+        - Croissance souvent portée par acquisitions de marques → goodwill significatif.
+        - BFR modéré grâce à une rotation rapide des stocks (produits de consommation courante).
+        - Résilience aux cycles économiques pour le très haut de gamme (effet Veblen).
+      TEXT
     else
       ""
     end
@@ -620,6 +648,76 @@ class QaGeneratorService
   def safe_sum(a, b)
     return nil unless a && b
     a + b
+  end
+
+  # ── Calculs génériques par texte de question ──────────────────────────────
+
+  # Détecte l'exercice cible mentionné dans le texte de la question (ex: "en 2022")
+  def detect_target_report(text)
+    m = text.match(/\b(20\d{2})\b/)
+    return nil unless m
+    @reports.find { |r| r.fiscal_year == m[1].to_i }
+  end
+
+  # Tente de calculer une réponse numérique en analysant le texte de la question.
+  # Couvre les ratios les plus courants dans les analyses ANAFI.
+  def compute_by_question_text(text, report)
+    return nil unless report
+
+    t   = text.downcase.unicode_normalize rescue text.downcase
+    is  = report.income_statement
+    bs  = report.balance_sheet
+    cfs = report.cash_flow_statement
+
+    if t.match?(/\bebe\b|ebitda/)
+      is&.ebitda_calculated&.then { |v| (v / 1_000_000).round(0) }
+
+    elsif t.match?(/taux d.imp[oô]t|is apparent|imp[oô]t apparent/)
+      next if is&.income_tax.nil? || is&.net_income.nil?
+      base = is.net_income + is.income_tax
+      base > 0 ? (is.income_tax / base * 100).round(1) : nil
+
+    elsif t.match?(/roa|rentabilit.*actif.*[eé]co|return on asset/)
+      next if is&.ebit.nil? || bs&.total_assets.nil?
+      (is.ebit / bs.total_assets * 100).round(1)
+
+    elsif t.match?(/autonomie financ/)
+      next if bs&.total_equity.nil? || bs&.total_assets.nil?
+      (bs.total_equity / bs.total_assets * 100).round(1)
+
+    elsif t.match?(/liquidit.*r[eé]duite|quick ratio|ratio de liquidit.*r/)
+      next if bs.nil?
+      num  = (bs.trade_receivables || 0) + (bs.cash_and_equivalents || 0)
+      denom = (bs.trade_payables || 0) + (bs.st_financial_debt || 0)
+      denom > 0 ? (num / denom * 100).round(0) : nil
+
+    elsif t.match?(/dn.*ebitda|endettement.*ebitda|levier/)
+      report.debt_ratio&.round(1)
+
+    elsif t.match?(/co[uû]t.*dette.*net|net.*debt.*cost|taux.*endettement/)
+      compute_net_debt_cost_after_tax(report)
+
+    elsif t.match?(/capex.*amortissement|investissement.*dotation|capex.*dap/)
+      compute_capex_to_da_ratio
+
+    elsif t.match?(/roe|rentabilit.*capitaux propres|return on equity/)
+      compute_roe_group_share(report)
+
+    elsif t.match?(/rentabilit.*[eé]conomique|re\b|ebit.*actif [eé]co/)
+      report.economic_return.then { |v| v ? (v * 100).round(1) : nil }
+
+    elsif t.match?(/dso|cr[eé]ances.*jours|jours.*cr[eé]ances|d[eé]lai.*encaissement/)
+      report.days_sales_outstanding&.round(0)
+
+    elsif t.match?(/dpo|fournisseurs.*jours|jours.*fournisseurs|d[eé]lai.*paiement/)
+      report.days_payable_outstanding&.round(0)
+
+    elsif t.match?(/dio|stocks.*jours|jours.*stocks|rotation.*stocks/)
+      report.days_inventory_outstanding&.round(0)
+
+    elsif t.match?(/tcam|cagr|taux.*croissance.*annuel/)
+      @company.cagr_revenue.then { |v| v ? (v * 100).round(1) : nil }
+    end
   end
 
   # Vrai si les questions contiennent des références à Laurent-Perrier (calculs LP-spécifiques)
