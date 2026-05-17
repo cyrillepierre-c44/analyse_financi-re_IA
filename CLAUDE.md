@@ -22,9 +22,10 @@ les dernières soient correctes du premier coup, sans retouche manuelle.
 ## Stack technique
 
 - Rails 8.1.3 · SQLite · Hotwire/Turbo · SolidQueue (jobs)
-- PDF extraction : PDF::Reader (texte) + Ghostscript (PNG) + PyMuPDF (détection images)
-- LLM : GitHub Models API (Azure endpoint) · Modèle : gpt-4o · Limite input : ~8 000 tokens
-- Extraction multi-passes : Passe A (IS/compte de résultat) + Passe B (CFS + Bilan)
+- PDF extraction : Ghostscript (PNG 150dpi) + GPT-4o Vision page par page (`PdfTextifier`)
+- LLM : GitHub Models API (Azure endpoint) · Modèle : gpt-4o · Limite input : ~80 000 chars
+- Pipeline : textification complète → extraction financière JSON → extraction des questions
+- Budget API : ~N+2 appels par société (N = nombre de pages du PDF)
 
 ## Formats comptables gérés
 
@@ -49,7 +50,10 @@ les dernières soient correctes du premier coup, sans retouche manuelle.
 
 ```
 CompanyPdfImporter.call(pdf_path)
-  └─ save_to_database → Company + FinancialReports
+  ├─ PdfTextifier.call(pdf_path)       ← 1 appel GPT-4o Vision par page
+  ├─ parse_with_llm(full_text)         ← 1 appel extraction IS/BS/CFS
+  ├─ save_to_database(data)            → Company + FinancialReports (avec backfills)
+  └─ extract_and_save_questions(...)   ← 1 appel extraction des questions → Question records
         └─ AnalyticalPreparationJob (SolidQueue)
               ├─ CompanyContextPreparationService (ia_context)
               └─ QaGenerationJob
@@ -117,3 +121,49 @@ Erreurs détectées par comparaison avec l'Annexe 1 du cas HEC :
 
 ### Score analyse L'Oréal estimé vs barème HEC
 V1 ~26 pts → V5 ~33-34 / 36 pts.
+
+## Travaux effectués — 17 mai 2026 (branche master)
+
+### Refonte architecture extraction PDF — `PdfTextifier`
+Problème : l'ancien pipeline (détection de pages par score texte + vision multi-passes) sélectionnait
+les mauvaises pages (ex : pages de questions ANAFI au lieu des annexes financières).
+
+Solution : nouveau service `app/services/pdf_textifier.rb` — textification **page par page** :
+- Ghostscript convertit chaque page en PNG 150dpi
+- GPT-4o Vision transcrit chaque page : texte → texte, tableaux → Markdown, graphiques → tableaux x/y
+- Retry automatique sur 429 (attend le délai indiqué par l'API)
+- Retourne un texte structuré avec marqueurs `=== PAGE N ===`
+
+`CompanyPdfImporter` réécrit (928 → ~320 lignes) : plus de logique vision/multi-passes,
+travaille uniquement sur le texte propre produit par `PdfTextifier`. Limite de contexte : 80 000 chars.
+
+### Extraction automatique des questions
+`CompanyPdfImporter#extract_and_save_questions` : après l'import financier, un appel LLM dédié
+extrait toutes les questions numérotées du document (texte, type, options) → crée des records `Question`
+liés à la société. S'exécute sur le même texte textifié (pas d'appel Ghostscript supplémentaire).
+
+### Backfills automatiques dans `save_sub`
+- `total_assets` : reconstruit côté actif (`total_fixed_assets_net + stocks + créances + trésorerie`)
+  si le LLM ne l'a pas fourni. Débloque ROA, autonomie financière, rotation actif.
+- `ebitda` : `EBIT + DAP` si non fourni directement.
+
+### `BalanceSheet#financial_autonomy_ratio`
+Utilise `total_assets` en fallback si `total_equity_and_liabilities` est nil.
+
+### `QaGeneratorService` — Q&A générique (hors LP/Loréal)
+- `compute_by_question_text(text, report)` : calcule les ratios numériques courants par analyse
+  du texte de la question (EBE/EBITDA, taux IS, ROA, autonomie financière, liquidité réduite,
+  DN/EBITDA, coût dette nette, DSO, DPO, DIO, TCAM, ROE, Re).
+- `sector_context` enrichi : contexte automobile premium + cosmétique/luxe en plus du champagne.
+
+### Budget API GitHub Models (50 appels/jour)
+| Société | Pages | Appels |
+|---------|-------|--------|
+| Porsche AG | 13 | 15 |
+| L'Oréal | 15 | 17 |
+| Laurent-Perrier | 18 | 20 |
+
+### À faire — matin du 2026-05-18
+Reimporter Porsche + L'Oréal (32 appels) pour vérifier rétrocompatibilité et extraire les questions.
+Voir mémoire `project_porsche_import.md` pour les commandes exactes et les valeurs de référence L'Oréal.
+LP n'est pas réimporté (données déjà validées).
