@@ -417,6 +417,13 @@ class FinancialAnalysisGenerator
       - BFR : TOUJOURS comparer le BFR de la DERNIÈRE année à celui de la PREMIÈRE année
         (ex. "passant de X M€ en NNNN à Y M€ en NNNN") avant de qualifier son évolution ;
         souligner son poids dans l'actif économique ;
+        RÈGLE IMPÉRATIVE SUR LE SENS DU BFR : un BFR qui DIMINUE (devient moins positif, devient nul,
+        ou devient plus négatif) est TOUJOURS une AMÉLIORATION — les fournisseurs financent davantage
+        le cycle d'exploitation et la société a moins besoin de financement externe pour son cycle ;
+        un BFR qui AUGMENTE (devient plus positif, ou moins négatif) est une DÉGRADATION ;
+        un BFR négatif et qui devient encore plus négatif S'AMÉLIORE : ne jamais écrire "détérioré",
+        "dégradé" ou "aggravé" dans ce cas — écrire "s'est encore amélioré", "s'est renforcé" ou
+        "s'est encore réduit" ; cette règle s'applique QUEL QUE SOIT le signe du BFR ;
         si l'activité est saisonnière (clôture ne coïncidant pas avec le pic d'activité, ex. champagne
         avec clôture au 31 mars après les ventes de Noël), DIRE EXPLICITEMENT que la saisonnalité
         empêche de porter un jugement sur les montants absolus des composants du BFR — seule leur
