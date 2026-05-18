@@ -14,20 +14,31 @@ class FinancialReport < ApplicationRecord
   validates :fiscal_year, uniqueness: { scope: :company_id }
 
   # ── RENTABILITÉ ÉCONOMIQUE ────────────────────────────────────────────────
-  # Re = EBIT(1 - t) / Actif économique
-  def economic_return(tax_rate: 0.25)
+
+  # Taux IS apparent = IS / résultat avant IS. Fallback 25 % si données insuffisantes.
+  def apparent_tax_rate(fallback: 0.25)
+    is = income_statement
+    return fallback unless is&.income_tax&.positive?
+    base = is.current_result ||
+           (is.net_income && is.income_tax ? is.net_income + is.income_tax : nil)
+    return fallback unless base&.positive?
+    is.income_tax / base
+  end
+
+  # Re = EBIT(1 - t) / Actif économique — utilise le taux IS apparent par défaut
+  def economic_return(tax_rate: nil)
     ae   = balance_sheet&.economic_assets
     ebit = income_statement&.ebit
     return nil unless ae&.positive? && ebit
-    ebit * (1 - tax_rate) / ae
+    ebit * (1 - (tax_rate || apparent_tax_rate)) / ae
   end
 
   # Décomposition Re = Marge EBIT(1-t) × Rotation économique
-  def ebit_margin_after_tax(tax_rate: 0.25)
+  def ebit_margin_after_tax(tax_rate: nil)
     revenue = income_statement&.revenue
     ebit    = income_statement&.ebit
     return nil unless revenue&.positive? && ebit
-    ebit * (1 - tax_rate) / revenue
+    ebit * (1 - (tax_rate || apparent_tax_rate)) / revenue
   end
 
   def economic_rotation
@@ -55,21 +66,22 @@ class FinancialReport < ApplicationRecord
 
   # ── EFFET DE LEVIER ───────────────────────────────────────────────────────
   # Rcp = Re + (Re - i*(1-t)) * (D_nette / CP)
-  def leverage_effect(tax_rate: 0.25, debt_cost_before_tax: nil)
-    re = economic_return(tax_rate: tax_rate)
+  def leverage_effect(tax_rate: nil, debt_cost_before_tax: nil)
+    t  = tax_rate || apparent_tax_rate
+    re = economic_return(tax_rate: t)
     nd = balance_sheet&.net_financial_debt
     cp = balance_sheet&.total_equity
     return nil unless re && nd && cp&.positive?
     return nil unless nd.positive?  # Pas de levier si trésorerie nette positive
 
     cost_after_tax = if debt_cost_before_tax
-                       debt_cost_before_tax * (1 - tax_rate)
+                       debt_cost_before_tax * (1 - t)
                      elsif ifrs?
                        # IFRS : financial_expenses = "Coût de l'endettement net" (déjà NET)
                        # Peut être négatif si position de trésorerie nette (ex: L'Oréal 2016-2020)
                        charges = income_statement&.financial_expenses
                        return nil unless charges
-                       (charges / nd) * (1 - tax_rate)
+                       (charges / nd) * (1 - t)
                      else
                        # PCG : charges brutes - produits financiers
                        charges = income_statement&.financial_expenses
@@ -77,7 +89,7 @@ class FinancialReport < ApplicationRecord
                        return nil unless charges
                        charges_nettes = charges - income
                        return nil unless charges_nettes.positive?
-                       (charges_nettes / nd) * (1 - tax_rate)
+                       (charges_nettes / nd) * (1 - t)
                      end
 
     re + (re - cost_after_tax) * (nd / cp)

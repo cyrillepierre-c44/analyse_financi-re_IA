@@ -694,8 +694,8 @@ class QaGeneratorService
       base = is.net_income + is.income_tax
       return nil unless base > 0
       val = is.income_tax / base * 100
-      # "tapez 15.2" → 1 décimale ; "tapez 15" → entier
-      t.match?(/tapez \d+[.,]\d/) ? val.round(1) : val.round(0)
+      # "tapez 15.2" → 1 décimale ; "tapez 15" → troncature ANAFI (to_i)
+      t.match?(/tapez \d+[.,]\d/) ? val.round(1) : val.to_i
 
     elsif t.match?(/roa|rentabilit.*actif.*[eé]co|return on asset/)
       return nil if is&.ebit.nil? || bs&.total_assets.nil?
@@ -743,7 +743,24 @@ class QaGeneratorService
       report.wcr_in_days(vat_rate: 0.20)&.round(0)
 
     elsif t.match?(/dso|cr[eé]ances.*jours|jours.*cr[eé]ances|d[eé]lai.*encaissement|d[eé]lai.*paiement.*client|client.*d[eé]lai/)
-      report.days_sales_outstanding&.round(0)
+      recv = bs&.trade_receivables
+      rev  = is&.revenue
+      return nil unless recv && rev&.positive?
+      # "en jours de CA TTC" → diviser par CA TTC (TVA 20% par défaut)
+      vat = t.match?(/\bttc\b/) ? 1.20 : 1.0
+      (recv / (rev * vat) * 365).round(0)
+
+    elsif t.match?(/fournisseurs.*sens large|sens large.*fournisseurs|d[eé]lai.*fournisseurs.*sens large/)
+      # Fournisseurs au sens large = dettes fourn. + autres passifs CT exploitation
+      # Dénominateur = (CA − EBIT − DAP) × (1 + TVA) = coûts d'exploitation TTC hors DAP
+      fournisseurs = (bs&.trade_payables || 0) + (bs&.other_operating_liabilities || 0)
+      rev  = is&.revenue
+      ebit = is&.ebit
+      dap  = is&.depreciation_amortization
+      return nil unless rev && ebit && dap && fournisseurs.positive?
+      cout_ht = rev - ebit - dap
+      return nil unless cout_ht.positive?
+      (fournisseurs / (cout_ht * 1.20) * 365).round(0)
 
     elsif t.match?(/dpo|fournisseurs.*jours|jours.*fournisseurs|d[eé]lai.*paiement.*fourn|fourn.*d[eé]lai.*paiement|d[eé]lai.*paiement/)
       report.days_payable_outstanding&.round(0)
@@ -757,7 +774,8 @@ class QaGeneratorService
       report.days_inventory_outstanding&.round(0)
 
     elsif t.match?(/tcam|cagr|taux.*croissance.*annuel/)
-      @company.cagr_revenue.then { |v| v ? (v * 100).round(0) : nil }
+      # Convention ANAFI "tapez 15" = troncature (to_i), pas arrondi
+      @company.cagr_revenue.then { |v| v ? (v * 100).to_i : nil }
     end
   end
 
