@@ -82,8 +82,15 @@ class QaGeneratorService
               when 17 then lp_context? ? compute_capex_to_da_ratio : nil
               when 18 then lp_context? ? extract_q18_from_context : nil
               when 19 then compute_debt_ratio(last_r)
-              when 20 then compute_current_ratio(last_r)
-              when 21 then lp_context? ? compute_quick_ratio(last_r) : (loreal_context? ? extract_q21_from_context : nil)
+              when 20 then if q.text.match?(/introduisez \d{2,3}/)
+                           # Format "introduisez 103" = % entier — utiliser le ratio brut pour éviter l'arrondi intermédiaire
+                           v = last_r&.balance_sheet&.general_liquidity_ratio
+                           v ? (v * 100).round(0) : nil
+                         else
+                           compute_current_ratio(last_r)
+                         end
+              when 21 then lp_context? ? compute_quick_ratio(last_r) :
+                           (loreal_context? ? extract_q21_from_context : compute_reduced_liquidity_pct(last_r))
               when 25 then lp_context? ? compute_economic_return_after_tax(last_r) : nil
               when 27 then lp_context? ? compute_net_debt_cost_after_tax(last_r) : nil
               when 30 then lp_context? ? compute_roe_group_share(last_r) : nil
@@ -247,6 +254,11 @@ class QaGeneratorService
              bs.st_financial_debt.to_f
     return nil unless cl.positive?
     (liquid / cl).round(2)
+  end
+
+  def compute_reduced_liquidity_pct(report)
+    v = report&.balance_sheet&.reduced_liquidity_ratio
+    v ? (v * 100).round(0) : nil
   end
 
   def compute_economic_return_after_tax(report)
@@ -680,7 +692,10 @@ class QaGeneratorService
     elsif t.match?(/taux d.imp[oô]t|is apparent|imp[oô]t apparent/)
       return nil if is&.income_tax.nil? || is&.net_income.nil?
       base = is.net_income + is.income_tax
-      base > 0 ? (is.income_tax / base * 100).round(1) : nil
+      return nil unless base > 0
+      val = is.income_tax / base * 100
+      # "tapez 15.2" → 1 décimale ; "tapez 15" → entier
+      t.match?(/tapez \d+[.,]\d/) ? val.round(1) : val.round(0)
 
     elsif t.match?(/roa|rentabilit.*actif.*[eé]co|return on asset/)
       return nil if is&.ebit.nil? || bs&.total_assets.nil?
@@ -691,16 +706,15 @@ class QaGeneratorService
       (bs.total_equity / bs.total_assets * 100).round(1)
 
     elsif t.match?(/liquidit.*r[eé]duite|quick ratio|ratio de liquidit.*r/)
-      return nil if bs.nil?
-      num  = (bs.trade_receivables || 0) + (bs.cash_and_equivalents || 0)
-      denom = (bs.trade_payables || 0) + (bs.st_financial_debt || 0)
-      denom > 0 ? (num / denom * 100).round(0) : nil
+      v = bs&.reduced_liquidity_ratio
+      v ? (v * 100).round(0) : nil
 
     elsif t.match?(/dn.*ebitda|endettement.*ebitda|levier/)
       report.debt_ratio&.round(1)
 
     elsif t.match?(/co[uû]t.*dette|net.*debt.*cost|taux.*endettement/)
-      compute_net_debt_cost_after_tax(report)
+      val = compute_net_debt_cost_after_tax(report)
+      val && (t.match?(/tapez \d+[.,]\d/) ? val.round(1) : val.round(0))
 
     elsif t.match?(/capex.*amortissement|investissement.*dotation|capex.*dap/)
       compute_capex_to_da_ratio
@@ -708,8 +722,25 @@ class QaGeneratorService
     elsif t.match?(/roe|rentabilit.*capitaux propres|return on equity/)
       compute_roe_group_share(report)
 
+    elsif t.match?(/rotation.*actif [eé]co|taux.*rotation.*actif [eé]co|chiffre.*affaires.*actif [eé]co/)
+      ae = bs&.economic_assets
+      rev = is&.revenue
+      (ae&.positive? && rev) ? (rev / ae).round(1) : nil
+
+    elsif t.match?(/rentabilit.*[eé]conomique.*taux.*apparent|m[eé]thodologie de la question/)
+      # Re avec le taux IS apparent de la dernière année (ex : Q24 Porsche qui renvoie à Q9)
+      is_last = @reports.last.income_statement
+      rv_last = is_last&.current_result || safe_sum(is_last&.net_income, is_last&.income_tax)
+      is_rate = (rv_last&.positive? && is_last&.income_tax) ? is_last.income_tax.to_f / rv_last : 0.25
+      nopat = is&.ebit.to_f * (1 - is_rate)
+      ae    = bs&.economic_assets
+      ae&.positive? ? (nopat / ae * 100).round(0) : nil
+
     elsif t.match?(/rentabilit.*[eé]conomique|\bre\b|ebit.*actif [eé]co/)
       report.economic_return.then { |v| v ? (v * 100).round(1) : nil }
+
+    elsif t.match?(/\bbfr\b|besoin.*fonds.*roulement.*jours|jours.*bfr/)
+      report.wcr_in_days(vat_rate: 0.20)&.round(0)
 
     elsif t.match?(/dso|cr[eé]ances.*jours|jours.*cr[eé]ances|d[eé]lai.*encaissement|d[eé]lai.*paiement.*client|client.*d[eé]lai/)
       report.days_sales_outstanding&.round(0)
@@ -717,11 +748,16 @@ class QaGeneratorService
     elsif t.match?(/dpo|fournisseurs.*jours|jours.*fournisseurs|d[eé]lai.*paiement.*fourn|fourn.*d[eé]lai.*paiement|d[eé]lai.*paiement/)
       report.days_payable_outstanding&.round(0)
 
+    elsif t.match?(/produits? finis?.*jours|jours.*produits? finis?|rotation.*produits? finis?|stocks? de produits? finis?/)
+      fg   = bs&.finished_goods_inventory
+      cogs = is&.cost_of_sales
+      (fg && cogs&.positive?) ? (fg / cogs * 365).round(0) : nil
+
     elsif t.match?(/dio|stocks.*jours|jours.*stocks|rotation.*stocks/)
       report.days_inventory_outstanding&.round(0)
 
     elsif t.match?(/tcam|cagr|taux.*croissance.*annuel/)
-      @company.cagr_revenue.then { |v| v ? (v * 100).round(1) : nil }
+      @company.cagr_revenue.then { |v| v ? (v * 100).round(0) : nil }
     end
   end
 
