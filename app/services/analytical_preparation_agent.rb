@@ -177,22 +177,26 @@ class AnalyticalPreparationAgent
     searcher = WebSearchService.new
     results  = []
 
-    # Recherches ciblées sur les lacunes les plus importantes (max 4)
-    priority_gaps = gaps.first(4)
-    priority_gaps.each do |gap|
-      query   = "#{@company.name} #{gap}"
+    # Toutes les lacunes sont recherchées, sans plafond
+    gaps.each do |gap|
+      query = gap_to_query(gap)
       log "  → Recherche : #{query}"
-      hits    = searcher.search(query, max_results: 3)
+      hits  = searcher.search(query, max_results: 5)
       results.concat(hits)
     end
 
-    # Recherche générale sur la société
-    general_hits = searcher.search("#{@company.name} résultats financiers secteur analyse", max_results: 3)
+    # Recherche générale actionnariat + gouvernance
+    general_hits = searcher.search(
+      "#{@company.name} shareholders ownership structure annual report",
+      max_results: 5
+    )
     results.concat(general_hits)
 
     return "" if results.empty?
 
-    # Synthèse des résultats web
+    # Dédupliquer par URL — un seul appel summarize_web (budget API)
+    results.uniq! { |r| r[:url] }
+
     web_text = results.map { |r| "#{r[:title]}\n#{r[:content]}" }.join("\n\n---\n\n")
     summarize_web(web_text)
   end
@@ -200,18 +204,32 @@ class AnalyticalPreparationAgent
   def summarize_web(web_text)
     prompt = <<~PROMPT
       Voici des extraits de pages web concernant #{@company.name}.
-      Extrait UNIQUEMENT les faits utiles pour une analyse financière :
-      positionnement sectoriel, tendances marché, concurrents, CMPC, capitalisation,
-      rachats d'actions, participations, événements récents.
 
-      FORMAT : bullet points uniquement, zéro paragraphe. Max 1000 caractères.
-      Élimine le bruit marketing. Conserve chiffres et dates précis.
+      MISSION : extraire TOUS les faits utiles pour combler des lacunes d'analyse financière.
+      En particulier : actionnariat (% par actionnaire nommé), notation de crédit, CMPC,
+      capitalisation boursière, lignes de crédit, taux d'intérêt moyen, rachats d'actions,
+      participations au bilan, concurrents et parts de marché, variations de change,
+      structure des coûts (part fixe/variable).
+
+      RÈGLE ABSOLUE : si un fait est présent dans les extraits, le retranscrire avec le
+      chiffre EXACT et la date. Ne jamais résumer en "information non disponible" si
+      l'extrait contient la donnée.
+
+      FORMAT : bullet points uniquement, zéro paragraphe. Max 1 500 caractères.
+      Élimine le bruit marketing. Conserve les chiffres et dates précis.
 
       CONTENU WEB :
-      #{web_text.truncate(30_000)}
+      #{web_text.truncate(35_000)}
     PROMPT
 
-    llm_call(prompt, max_tokens: 400)
+    llm_call(prompt, max_tokens: 700)
+  end
+
+  # Transforme une lacune verbeuse en requête de recherche concise et efficace
+  def gap_to_query(gap)
+    # Supprimer les explications entre parenthèses et les descriptions trop longues
+    clean = gap.gsub(/\(.*?\)/, '').strip.truncate(60, omission: '')
+    "#{@company.name} #{clean}"
   end
 
   # ── PHASE 4b : FILTRAGE DES LACUNES RÉSOLUES ─────────────────────────────────
@@ -265,10 +283,17 @@ class AnalyticalPreparationAgent
       (secteur, stratégie, participations). Aucune répétition de chiffres déjà dans les états financiers.
       CIBLE : 3 000 à 3 500 caractères — vise la borne haute pour maximiser la richesse du contexte.
 
-      UTILISE TES CONNAISSANCES GÉNÉRALES : si une information est publiquement connue sur
-      #{@company.name} (participation dans une société cotée, note de crédit, capitalisation
-      boursière, CMPC sectoriel), inscris-la même si absente des documents fournis.
-      "n/d" est acceptable UNIQUEMENT si tu ne disposes d'aucune information fiable sur ce point.
+      RÈGLE ABSOLUE — INTERDICTION DU "n/d" :
+      Tu as accès à trois sources : (1) les résultats de recherches web ci-dessous,
+      (2) tes connaissances générales sur #{@company.name}, (3) les estimations sectorielles.
+      "n/d" est STRICTEMENT INTERDIT sauf si ces trois sources sont toutes silencieuses sur
+      le point en question. Dans tous les autres cas :
+      - Si tu as une valeur précise (web ou connaissance générale) → inscris-la avec sa source
+      - Si tu n'as qu'une fourchette sectorielle → écris "~X % (estimation sectorielle)"
+      - Si tu peux déduire une approximation → écris "~X (estimé d'après...)"
+      Pour les données publiquement connues (actionnariat Volkswagen/Porsche, participation
+      Sanofi/L'Oréal, famille Nonancourt/Laurent-Perrier, note de crédit publiée, etc.) :
+      les inscrire directement sans attendre qu'elles apparaissent dans les sources fournies.
 
       DONNÉES FINANCIÈRES DISPONIBLES (ne pas répéter) :
       #{financial_summary}
@@ -337,7 +362,7 @@ class AnalyticalPreparationAgent
       Génère uniquement le brief, sans introduction ni conclusion :
     PROMPT
 
-    result = llm_call(prompt, max_tokens: 1800)
+    result = llm_call(prompt, max_tokens: 2200)
 
     # Réinjecter les marqueurs techniques s'ils ont disparu du contexte généré
     if technical_markers.present?
