@@ -244,7 +244,7 @@ class FinancialReport < ApplicationRecord
     capex = cash_flow_statement&.capital_expenditure
     amort = cash_flow_statement&.depreciation_amortization || income_statement&.depreciation_amortization
     return nil unless capex && amort&.positive?
-    capex / amort
+    capex.abs / amort
   end
 
   # ── POINT MORT ────────────────────────────────────────────────────────────
