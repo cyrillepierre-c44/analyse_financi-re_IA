@@ -178,8 +178,8 @@ class QaGeneratorService
       cf = r.cash_flow_statement
       is = r.income_statement
       next unless cf && is
-      capex     = cf.capital_expenditure.to_f
-      disposals = cf.asset_disposals.to_f
+      capex     = cf.capital_expenditure.to_f.abs   # may be stored as negative (cash outflow)
+      disposals = cf.asset_disposals.to_f.abs
       da        = is.depreciation_amortization.to_f
       total_net_capex += capex - disposals
       total_da        += da
@@ -278,7 +278,7 @@ class QaGeneratorService
                      else
                        is.financial_expenses.to_f - is.financial_income.to_f
                      end
-    return nil unless charges_nettes&.positive?
+    return nil if charges_nettes.nil?
 
     result_avant_is = is.current_result || safe_sum(is.net_income, is.income_tax)
     return nil unless result_avant_is&.positive? && is.income_tax
@@ -622,9 +622,9 @@ class QaGeneratorService
     exact = options.find { |o| o.strip.downcase.gsub(/\s+/, " ") == normalized }
     return exact if exact
 
-    # 2. Correspondance par lettre seule : "a" → option commençant par "a)" ou "a."
+    # 2. Correspondance par lettre seule : "a" → option commençant par "a)", "a." ou "a-"
     if normalized =~ /\A[a-z]\z/
-      letter_match = options.find { |o| o.strip.downcase =~ /\A#{Regexp.escape(normalized)}[\.\)]\s/i }
+      letter_match = options.find { |o| o.strip.downcase =~ /\A#{Regexp.escape(normalized)}[\.\)\-]\s/i }
       return letter_match if letter_match
     end
 
@@ -694,7 +694,7 @@ class QaGeneratorService
     elsif t.match?(/dn.*ebitda|endettement.*ebitda|levier/)
       report.debt_ratio&.round(1)
 
-    elsif t.match?(/co[uû]t.*dette.*net|net.*debt.*cost|taux.*endettement/)
+    elsif t.match?(/co[uû]t.*dette|net.*debt.*cost|taux.*endettement/)
       compute_net_debt_cost_after_tax(report)
 
     elsif t.match?(/capex.*amortissement|investissement.*dotation|capex.*dap/)
@@ -703,13 +703,13 @@ class QaGeneratorService
     elsif t.match?(/roe|rentabilit.*capitaux propres|return on equity/)
       compute_roe_group_share(report)
 
-    elsif t.match?(/rentabilit.*[eé]conomique|re\b|ebit.*actif [eé]co/)
+    elsif t.match?(/rentabilit.*[eé]conomique|\bre\b|ebit.*actif [eé]co/)
       report.economic_return.then { |v| v ? (v * 100).round(1) : nil }
 
-    elsif t.match?(/dso|cr[eé]ances.*jours|jours.*cr[eé]ances|d[eé]lai.*encaissement/)
+    elsif t.match?(/dso|cr[eé]ances.*jours|jours.*cr[eé]ances|d[eé]lai.*encaissement|d[eé]lai.*paiement.*client|client.*d[eé]lai/)
       report.days_sales_outstanding&.round(0)
 
-    elsif t.match?(/dpo|fournisseurs.*jours|jours.*fournisseurs|d[eé]lai.*paiement/)
+    elsif t.match?(/dpo|fournisseurs.*jours|jours.*fournisseurs|d[eé]lai.*paiement.*fourn|fourn.*d[eé]lai.*paiement|d[eé]lai.*paiement/)
       report.days_payable_outstanding&.round(0)
 
     elsif t.match?(/dio|stocks.*jours|jours.*stocks|rotation.*stocks/)
