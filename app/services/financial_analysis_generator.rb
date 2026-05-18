@@ -249,7 +249,9 @@ class FinancialAnalysisGenerator
 
     lines << "### Ratios clés"
     lines << table_header
+    lines << table_row("Taux IS apparent %",         ->(r){ fmt_pct_ratio(r.apparent_tax_rate(fallback: nil)) })
     lines << table_row("Re — rentabilité éco. %",    ->(r){ fmt_pct_ratio(r.economic_return) })
+    lines << table_row("Marge EBIT après IS %",      ->(r){ fmt_pct_ratio(r.ebit_margin_after_tax) })
     lines << table_row("ROE / Rcp (RN/CP) %",        ->(r){ fmt_pct_ratio(r.return_on_equity) })
     lines << table_row("Écart Rcp − Re (pts)",        ->(r){
       re  = r.economic_return
@@ -460,9 +462,10 @@ class FinancialAnalysisGenerator
 
       **4. Analyse des rentabilités**
       - Rentabilité économique Re = EBIT(1 − t) / Actif économique, décomposée en marge × rotation ;
-        RÈGLE IMPÉRATIVE : calculer Re pour CHAQUE ANNÉE en utilisant le taux d'IS de CETTE MÊME
-        ANNÉE (IS de l'année / résultat courant avant IS de la même année) — ne pas appliquer un
-        taux IS unique à toutes les années ; qualifier le taux d'IS : normal (~25-28 %), faible ou élevé
+        RÈGLE IMPÉRATIVE : lire les valeurs de Re ET du taux IS apparent directement dans le tableau
+        "Ratios clés" ci-dessus (lignes "Re — rentabilité éco. %" et "Taux IS apparent %") — NE PAS
+        recalculer ces valeurs, elles ont déjà été calculées avec le taux IS réel de chaque année ;
+        qualifier le taux d'IS : normal (~25-30 %), faible ou élevé
       - Décrire la TRAJECTOIRE COMPLÈTE de Re : progression puis rechute si c'est la réalité — ne pas
         résumer à une simple variation entre première et dernière année
       - Qualifier le niveau de Re — PROCÉDURE OBLIGATOIRE EN 3 ÉTAPES :
