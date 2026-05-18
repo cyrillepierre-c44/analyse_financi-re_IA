@@ -235,20 +235,104 @@ Ajouts dans `## Données bilan complémentaires` :
 
 - Suppression de l'année "2025" dans la mention de la capitalisation boursière (anti-hallucination).
 
-### À faire — 2026-05-19
+## Travaux effectués — 18 mai 2026 soir (branche master, suite)
 
-**Étape 5** : Régénérer les Q&A de Laurent-Perrier et L'Oréal (~4 appels API).
+### `FinancialAnalysisGenerator` — règle BFR
+
+- Règle ajoutée dans le prompt section investissements : un BFR qui DIMINUE (devient plus négatif)
+  est TOUJOURS une amélioration. Interdit d'écrire "détérioré" ou "dégradé" quand le BFR baisse.
+- Corrige les analyses Porsche/L'Oréal qui qualifiaient à tort de "détérioré" un BFR négatif devenant
+  plus négatif.
+- Analyses de LP, L'Oréal et Porsche régénérées (1 045 / 1 083 / 971 mots).
+
+### `AnalyticalPreparationAgent` — couverture complète Tavily
+
+Problème : seules 4 lacunes sur N étaient recherchées, requêtes trop verbatimes, 400 tokens de synthèse.
+
+Corrections :
+- Suppression du plafond `first(4)` → toutes les lacunes recherchées
+- `gap_to_query` : nettoie les parenthèses pour des requêtes Tavily efficaces
+- `max_results` 3 → 5 par requête + recherche dédiée actionnariat/gouvernance
+- Déduplication par URL (un seul `summarize_web` call = budget préservé)
+- `summarize_web` : max_tokens 400 → 700, prompt axé extraction de chiffres précis
+- `generate_context` : max_tokens 1 800 → 2 200
+- Interdiction stricte du "n/d" sauf silence total des 3 sources
+
+Résultats : Porsche 4/7 lacunes résolues (actionnariat VW 75%/Porsche SE 25%, rachats=non,
+saisonnalité, note A+ S&P). LP : actionnariat famille Nonancourt 65.17% + flottant 32.39% résolus.
+L'Oréal : budget épuisé — à relancer demain.
+
+---
+
+## À faire — matin du 2026-05-19 (budget reset à minuit UTC)
+
+**Budget estimé : ~8 appels sur 50 disponibles.**
+
+### Étape 1 — Rafraîchir le contexte L'Oréal (~4 appels)
+
+L'`AnalyticalPreparationAgent` a crashé sur L'Oréal hier soir faute de budget.
 
 ```bash
-bin/rails runner "QaGenerationJob.perform_now(Company.find_by(name: 'Laurent-Perrier').id)"
+bin/rails runner "AnalyticalPreparationAgent.call(Company.find_by(name: \"L'Oréal\"))"
+```
+
+Vérifier les lacunes restantes :
+```bash
+bin/rails runner "puts Company.find_by(name: \"L'Oréal\").ia_context_gaps"
+```
+
+### Étape 2 — Régénérer les 3 analyses financières (~3 appels)
+
+Les ia_context de Porsche et LP ont été enrichis ce soir — les analyses doivent être régénérées
+pour en bénéficier. L'Oréal aussi après l'étape 1.
+
+```bash
+bin/rails runner "
+['Porsche AG', 'Laurent-Perrier', \"L'Oréal\"].each do |name|
+  retries = 0
+  begin
+    c = Company.find_by(name: name)
+    result = FinancialAnalysisGenerator.call(c)
+    c.update!(ai_analysis: result)
+    puts \"#{name} — #{result.split.size} mots\"
+  rescue RuntimeError => e
+    if e.message.include?('429') && retries < 3
+      wait = [e.message.match(/wait (\d+) second/)&.captures&.first.to_i + 5, 120].min
+      wait = 65 if wait < 10
+      puts \"Rate limit #{name}, attente #{wait}s...\"
+      sleep wait; retries += 1; retry
+    else; raise; end
+  end
+end
+"
+```
+
+### Étape 3 — Régénérer les Q&A L'Oréal (~1 appel)
+
+Seulement si l'ia_context a changé significativement (nouvelles données résolues en étape 1).
+
+```bash
 bin/rails runner "QaGenerationJob.perform_now(Company.find_by(name: \"L'Oréal\").id)"
 ```
 
-**Étape 6** : Régénérer les analyses financières de Laurent-Perrier et L'Oréal (~4 appels API).
+### Rappel — commandes utiles
 
 ```bash
-bin/rails runner "FinancialAnalysisGeneratorJob.perform_now(Company.find_by(name: 'Laurent-Perrier').id)"
-bin/rails runner "FinancialAnalysisGeneratorJob.perform_now(Company.find_by(name: \"L'Oréal\").id)"
+# État des 3 sociétés
+bin/rails runner "
+['Laurent-Perrier', \"L'Oréal\", 'Porsche AG'].each do |n|
+  c = Company.find_by(name: n)
+  puts \"#{n} — gaps: #{c.ia_context_gaps.to_s.lines.count} | analyse: #{c.ai_analysis.to_s.split.size} mots\"
+end
+"
+
+# Vérifier le BFR dans une analyse
+bin/rails runner "puts Company.find_by(name: 'Porsche AG').ai_analysis" | grep -i BFR
 ```
 
-Vérifier que les analyses sont cohérentes avec les Q&A après régénération.
+### Notes importantes
+
+- `FinancialAnalysisGeneratorJob` **n'existe pas** — utiliser `FinancialAnalysisGenerator.call(c)` + `c.update!(ai_analysis: result)`
+- `QaGenerationJob.perform_now(company_id)` existe lui ✓
+- Les marqueurs `Q_ANSWER:` dans ia_context L'Oréal sont préservés automatiquement par `AnalyticalPreparationAgent` (section `technical_markers`)
+- Budget GitHub Models : 50 appels/jour, reset à minuit UTC (2h du matin heure Paris)
