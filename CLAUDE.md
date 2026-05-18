@@ -180,3 +180,75 @@ Utilise `total_assets` en fallback si `total_equity_and_liabilities` est nil.
 Reimporter Porsche + L'Oréal (32 appels) pour vérifier rétrocompatibilité et extraire les questions.
 Voir mémoire `project_porsche_import.md` pour les commandes exactes et les valeurs de référence L'Oréal.
 LP n'est pas réimporté (données déjà validées).
+
+## Travaux effectués — 18 mai 2026 (branche master)
+
+### `FinancialReport` — taux IS apparent
+
+- Nouvelle méthode `apparent_tax_rate(fallback: 0.25)` : `IS / (RN + IS)`, fallback 25 % si données
+  insuffisantes. Accepte `fallback: nil` pour afficher "—" dans les tableaux.
+- `economic_return`, `ebit_margin_after_tax`, `leverage_effect` utilisent désormais `apparent_tax_rate`
+  au lieu d'un taux fixe de 25 %.
+
+### `FinancialAnalysisGenerator` — prompt enrichi
+
+- Deux nouvelles lignes dans la table des ratios : `Taux IS apparent %` et `Marge EBIT après IS %`.
+  Le LLM lit ces valeurs directement — il ne recalcule plus le taux IS.
+- TCAM : `.round(1)` → `.to_i` (troncature ANAFI, ex : 9,7 % → 9 %).
+- Règle ajoutée dans le prompt : ne jamais inventer ni mentionner une année pour la capitalisation
+  boursière si elle n'est pas explicitement indiquée dans le contexte.
+
+### `QaGeneratorService` — pré-calcul Ruby 100% pour LP et L'Oréal
+
+Audit final : **LP 15/15 ✓, L'Oréal 16/16 ✓** — aucune question numérique ne passe par le LLM.
+
+Nouvelles méthodes :
+- `compute_is_apparent_rate(report)` : taux IS apparent en % (1 décimale).
+- `compute_dso_france_pct(report)` : DSO LP = Clients / CA HT × 365 (TVA informative seulement).
+- `extract_context_answer(position)` : lit `Q{n}_ANSWER: valeur` dans `ia_context`.
+
+Nouveaux cas dans `compute_ruby_answers` :
+- **Q10 L'Oréal** : R² depuis `Q10_ANSWER` en ia_context (= 0.68).
+- **Q12 L'Oréal** : taux IS apparent 2021 (= 23.9 % — Sanofi dividendes non imposés).
+- **Q14 LP** : DSO HT/HT sur l'exercice cible ("2022-23" → FY2023).
+- **Q18 LP/L'Oréal** : via `Q18_ANSWER` en ia_context.
+- **Q20** : détection texte — CAPEX/DAP si "investissement/dotation", sinon liquidité générale.
+- **Q23 L'Oréal** : DN/EBITDA arrondi à 2 décimales si "deux chiffres" dans le texte.
+- **Q24 L'Oréal** : actifs courants − passifs courants via `Q24_ANSWER` (= −2 588 M€).
+- **Q29 L'Oréal** : Re ajustée hors participation Sanofi via `Q29_ANSWER` (= 15.3 %).
+
+`detect_target_report` : gère "YYYY-YY" (LP "2022-23" → FY 2023).
+`compute_by_question_text` : garde `!lp_context? && !loreal_context?` supprimée — fallback actif
+pour toutes les sociétés. Ajouts : DPO sens large (dénominateur CA−EBITDA pour IFRS),
+différence actifs/passifs courants, ROE générique (`return_on_equity`).
+ROE dans fallback générique : utilise `return_on_equity` (sans déduction minoritaires).
+
+### ia_context L'Oréal (rails runner)
+
+Ajouts dans `## Données bilan complémentaires` :
+- `Q10_ANSWER: 0.68` (R² régression autres charges vs CA 2017-2021)
+- `Q18_ANSWER: 85` (DPO sens large 2018)
+- `Q24_ANSWER: -2588` (actifs courants − passifs courants 2021, M€)
+- `Q29_ANSWER: 15.3` (Re 2021 ajustée hors Sanofi, taux IS apparent Q12)
+
+### ia_context Porsche (rails runner)
+
+- Suppression de l'année "2025" dans la mention de la capitalisation boursière (anti-hallucination).
+
+### À faire — 2026-05-19
+
+**Étape 5** : Régénérer les Q&A de Laurent-Perrier et L'Oréal (~4 appels API).
+
+```bash
+bin/rails runner "QaGenerationJob.perform_now(Company.find_by(name: 'Laurent-Perrier').id)"
+bin/rails runner "QaGenerationJob.perform_now(Company.find_by(name: \"L'Oréal\").id)"
+```
+
+**Étape 6** : Régénérer les analyses financières de Laurent-Perrier et L'Oréal (~4 appels API).
+
+```bash
+bin/rails runner "FinancialAnalysisGeneratorJob.perform_now(Company.find_by(name: 'Laurent-Perrier').id)"
+bin/rails runner "FinancialAnalysisGeneratorJob.perform_now(Company.find_by(name: \"L'Oréal\").id)"
+```
+
+Vérifier que les analyses sont cohérentes avec les Q&A après régénération.
