@@ -79,14 +79,14 @@ class QaGeneratorService
               when 13 then lp_context? ? compute_bfr_days(first) : nil
               when 15 then lp_context? ? compute_dio_cost_of_sales(@reports.sort_by(&:fiscal_year)[2] || last_r) : nil
               when 16 then lp_context? ? compute_dpo_broad(last_r) : nil
-              when 17 then compute_capex_to_da_ratio
+              when 17 then lp_context? ? compute_capex_to_da_ratio : nil
               when 18 then lp_context? ? extract_q18_from_context : nil
               when 19 then compute_debt_ratio(last_r)
               when 20 then compute_current_ratio(last_r)
               when 21 then lp_context? ? compute_quick_ratio(last_r) : (loreal_context? ? extract_q21_from_context : nil)
-              when 25 then compute_economic_return_after_tax(last_r)
-              when 27 then compute_net_debt_cost_after_tax(last_r)
-              when 30 then compute_roe_group_share(last_r)
+              when 25 then lp_context? ? compute_economic_return_after_tax(last_r) : nil
+              when 27 then lp_context? ? compute_net_debt_cost_after_tax(last_r) : nil
+              when 30 then lp_context? ? compute_roe_group_share(last_r) : nil
               end
 
       # Fallback générique par analyse du texte de question (sociétés hors LP/Loréal)
