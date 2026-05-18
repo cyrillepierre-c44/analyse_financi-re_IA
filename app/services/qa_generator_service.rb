@@ -76,28 +76,35 @@ class QaGeneratorService
               when 8  then lp_context? ? compute_break_even(first) : nil
               when 9  then lp_context? ? compute_margin_of_safety(last_r, compute_break_even(last_r))
                            : (loreal_context? ? compute_regression_intercept(:administrative_costs) : nil)
+              when 10 then loreal_context? ? extract_context_answer(10) : nil
+              when 12 then loreal_context? ? compute_is_apparent_rate(detect_target_report(q.text) || last_r) : nil
               when 13 then lp_context? ? compute_bfr_days(first) : nil
+              when 14 then lp_context? ? compute_dso_france_pct(detect_target_report(q.text) || last_r) : nil
               when 15 then lp_context? ? compute_dio_cost_of_sales(@reports.sort_by(&:fiscal_year)[2] || last_r) : nil
               when 16 then lp_context? ? compute_dpo_broad(last_r) : nil
               when 17 then lp_context? ? compute_capex_to_da_ratio : nil
-              when 18 then lp_context? ? extract_q18_from_context : nil
+              when 18 then lp_context? ? extract_q18_from_context :
+                           (loreal_context? ? extract_context_answer(18) : nil)
+              when 24 then loreal_context? ? extract_context_answer(24) : nil
               when 19 then compute_debt_ratio(last_r)
-              when 20 then if q.text.match?(/introduisez \d{2,3}/)
-                           # Format "introduisez 103" = % entier — utiliser le ratio brut pour éviter l'arrondi intermédiaire
-                           v = last_r&.balance_sheet&.general_liquidity_ratio
-                           v ? (v * 100).round(0) : nil
-                         else
-                           compute_current_ratio(last_r)
-                         end
+              when 20 then if q.text.match?(/investissement.{0,30}dotation|dotation.{0,30}investissement/i)
+                             compute_capex_to_da_ratio
+                           elsif q.text.match?(/introduisez \d{2,3}/)
+                             v = last_r&.balance_sheet&.general_liquidity_ratio
+                             v ? (v * 100).round(0) : nil
+                           else
+                             compute_current_ratio(last_r)
+                           end
               when 21 then lp_context? ? compute_quick_ratio(last_r) :
                            (loreal_context? ? extract_q21_from_context : compute_reduced_liquidity_pct(last_r))
               when 25 then lp_context? ? compute_economic_return_after_tax(last_r) : nil
               when 27 then lp_context? ? compute_net_debt_cost_after_tax(last_r) : nil
+              when 29 then loreal_context? ? extract_context_answer(29) : nil
               when 30 then lp_context? ? compute_roe_group_share(last_r) : nil
               end
 
-      # Fallback générique par analyse du texte de question (sociétés hors LP/Loréal)
-      if value.nil? && !lp_context? && !loreal_context?
+      # Fallback générique par analyse du texte de question — actif pour toutes les sociétés
+      if value.nil?
         target_report = detect_target_report(q.text) || last_r
         value = compute_by_question_text(q.text, target_report)
       end
@@ -307,6 +314,26 @@ class QaGeneratorService
     cp_group = safe_diff(bs.total_equity, bs.minority_interests) || bs.total_equity
     return nil unless cp_group&.positive?
     (rn_group / cp_group * 100).round(1)
+  end
+
+  # Taux IS apparent en % avec 1 décimale (utilise apparent_tax_rate du modèle)
+  def compute_is_apparent_rate(report)
+    t = report.apparent_tax_rate(fallback: nil)
+    t ? (t * 100).round(1) : nil
+  end
+
+  # DSO LP = Clients / CA HT × 365 (les deux sont HT, TVA mentionnée dans la question est informative)
+  def compute_dso_france_pct(report)
+    v = report&.days_sales_outstanding
+    v ? v.round(0) : nil
+  end
+
+  # Lecture d'une réponse statique dans ia_context : "Q{n}_ANSWER: valeur"
+  def extract_context_answer(position)
+    m = @company.ia_context.to_s.match(/Q#{position}_ANSWER\s*:\s*([^\n]+)/i)
+    return nil unless m
+    val = m[1].strip.tr(',', '.').to_f
+    val == val.to_i.to_f ? val.to_i : val
   end
 
   # Régression linéaire OLS de `expense_field` sur le CA — retourne l'intercepte (coûts fixes) en M€
@@ -669,8 +696,14 @@ class QaGeneratorService
 
   # ── Calculs génériques par texte de question ──────────────────────────────
 
-  # Détecte l'exercice cible mentionné dans le texte de la question (ex: "en 2022")
+  # Détecte l'exercice cible dans le texte de la question.
+  # Gère "2022-23" ou "2022-2023" (LP) → prend le second exercice (fin de période).
   def detect_target_report(text)
+    if (m = text.match(/\b(20\d{2})[-\/](2\d|20\d{2})\b/))
+      ending = m[2].length == 2 ? (m[1][0..1] + m[2]).to_i : m[2].to_i
+      r = @reports.find { |r| r.fiscal_year == ending }
+      return r if r
+    end
     m = text.match(/\b(20\d{2})\b/)
     return nil unless m
     @reports.find { |r| r.fiscal_year == m[1].to_i }
@@ -709,8 +742,10 @@ class QaGeneratorService
       v = bs&.reduced_liquidity_ratio
       v ? (v * 100).round(0) : nil
 
-    elsif t.match?(/dn.*ebitda|endettement.*ebitda|levier/)
-      report.debt_ratio&.round(1)
+    elsif t.match?(/dn.*ebitda|endettement.*ebitda|endettement.*brut.*exploitation/)
+      v = report.debt_ratio
+      decimals = t.match?(/deux chiffres|2 chiffres/) ? 2 : 1
+      v&.round(decimals)
 
     elsif t.match?(/co[uû]t.*dette|net.*debt.*cost|taux.*endettement/)
       val = compute_net_debt_cost_after_tax(report)
@@ -720,7 +755,8 @@ class QaGeneratorService
       compute_capex_to_da_ratio
 
     elsif t.match?(/roe|rentabilit.*capitaux propres|return on equity/)
-      compute_roe_group_share(report)
+      v = report.return_on_equity
+      v ? (v * 100).round(1) : nil
 
     elsif t.match?(/rotation.*actif [eé]co|taux.*rotation.*actif [eé]co|chiffre.*affaires.*actif [eé]co/)
       ae = bs&.economic_assets
@@ -752,15 +788,23 @@ class QaGeneratorService
 
     elsif t.match?(/fournisseurs.*sens large|sens large.*fournisseurs|d[eé]lai.*fournisseurs.*sens large/)
       # Fournisseurs au sens large = dettes fourn. + autres passifs CT exploitation
-      # Dénominateur = (CA − EBIT − DAP) × (1 + TVA) = coûts d'exploitation TTC hors DAP
+      # Dénominateur = CA − EBITDA (= coûts exploitation hors DAP), fallback CA − EBIT − DAP
       fournisseurs = (bs&.trade_payables || 0) + (bs&.other_operating_liabilities || 0)
-      rev  = is&.revenue
-      ebit = is&.ebit
-      dap  = is&.depreciation_amortization
-      return nil unless rev && ebit && dap && fournisseurs.positive?
-      cout_ht = rev - ebit - dap
-      return nil unless cout_ht.positive?
+      return nil unless fournisseurs.positive?
+      rev    = is&.revenue
+      ebitda = is&.ebitda_calculated
+      ebit   = is&.ebit
+      dap    = is&.depreciation_amortization
+      cout_ht = if ebitda && rev then rev - ebitda
+                elsif rev && ebit && dap then rev - ebit - dap
+                end
+      return nil unless cout_ht&.positive?
       (fournisseurs / (cout_ht * 1.20) * 365).round(0)
+
+    elsif t.match?(/diff[eé]rence.{0,30}actif.{0,20}courant|actif.{0,20}courant.{0,30}passif.{0,20}courant/)
+      ca = bs&.total_current_assets
+      cl = bs&.current_liabilities
+      (ca && cl) ? ((ca - cl) / 1_000_000).round(0) : nil
 
     elsif t.match?(/dpo|fournisseurs.*jours|jours.*fournisseurs|d[eé]lai.*paiement.*fourn|fourn.*d[eé]lai.*paiement|d[eé]lai.*paiement/)
       report.days_payable_outstanding&.round(0)
