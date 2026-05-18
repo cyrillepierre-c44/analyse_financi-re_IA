@@ -19,6 +19,19 @@ les dernières soient correctes du premier coup, sans retouche manuelle.
 - Ne jamais modifier une formule existante sans vérifier qu'elle donne le même résultat sur
   les données déjà en base.
 
+## Format ANAFI — conventions des énoncés
+
+Les documents ANAFI (format utilisé par HEC/ESCP pour les cas d'analyse financière) suivent
+des conventions spécifiques qu'il ne faut pas confondre avec des indices de réponse :
+
+- **"Si vous avez trouvé X, tapez Y"** dans une question numérique = exemple de format de saisie
+  uniquement (nombre de décimales, règle d'arrondi). La valeur X n'est **jamais** la réponse correcte.
+  Ex : "Si vous avez trouvé 15,3 %, tapez 15." → la vraie réponse peut être 50, ou -15, ou autre.
+- **Les questions ne contiennent jamais la réponse** — les données chiffrées utiles sont
+  exclusivement dans les annexes financières (états financiers, éléments complémentaires).
+- Les options de choix sont préfixées `a-`, `b-`, `c-`, `d-` (tiret, pas parenthèse) dans le format
+  Porsche/ANAFI ; `a)`, `b)` dans d'autres variantes. `snap_to_option` gère les deux formats.
+
 ## Stack technique
 
 - Rails 8.1.3 · SQLite · Hotwire/Turbo · SolidQueue (jobs)
