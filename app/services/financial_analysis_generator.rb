@@ -244,6 +244,11 @@ class FinancialAnalysisGenerator
       direction = delta_dn < 0 ? "BAISSÉ" : "AUGMENTÉ"
       lines << "| Tendance DN (#{@reports.first.fiscal_year}→#{@reports.last.fiscal_year}) | #{direction} de #{delta_dn.abs} M€ sur la période ||||||"
     end
+    dn_net_cash_years = @reports.select { |r| r.balance_sheet&.net_financial_debt&.negative? }
+    if dn_net_cash_years.any?
+      years_str = dn_net_cash_years.map(&:fiscal_year).join(", ")
+      lines << "| ⚑ Trésorerie nette | Années #{years_str} : DN < 0 → groupe en TRÉSORERIE NETTE (zéro endettement net) ||||||"
+    end
     lines << table_row("BFR (M€)",                            ->(r){ fmt_m(r.balance_sheet&.working_capital_requirement) })
     lines << ""
 
@@ -260,6 +265,20 @@ class FinancialAnalysisGenerator
       diff = ((roe - re) * 100).round(1)
       diff > 0 ? "+#{diff}" : diff.to_s
     })
+    ecart_signs = @reports.filter_map { |r|
+      re = r.economic_return; roe = r.return_on_equity
+      (re && roe) ? { year: r.fiscal_year, diff: (roe - re) * 100 } : nil
+    }
+    if ecart_signs.size >= 3
+      neg_count = ecart_signs.count { |e| e[:diff] <= 0 }
+      pos_count = ecart_signs.size - neg_count
+      if neg_count > pos_count
+        outliers = ecart_signs.select { |e| e[:diff] > 2.0 }.map { |e| "#{e[:year]} (+#{e[:diff].round(1)} pts)" }
+        note = "Rcp < Re sur #{neg_count}/#{ecart_signs.size} années → relation STRUCTURELLEMENT Rcp < Re"
+        note += " — exception : #{outliers.join(", ")} (anomalie à expliquer)" if outliers.any?
+        lines << "| ⚑ Écart structurel | #{note} ||||||"
+      end
+    end
     lines << table_row("Effet de levier financier",  ->(r){ r.balance_sheet&.financial_leverage&.round(2) })
     lines << table_row("Autonomie financière %",     ->(r){ fmt_pct_ratio(r.balance_sheet&.financial_autonomy_ratio) })
     lines << table_row("Liquidité générale",         ->(r){ r.balance_sheet&.general_liquidity_ratio&.round(2) })
@@ -274,6 +293,13 @@ class FinancialAnalysisGenerator
       diff = (curr - prev).round(1)
       diff > 0 ? "+#{diff}" : diff.to_s
     }.join(" | ") + " |"
+    dso_with_year = @reports.filter_map { |r| v = r.days_sales_outstanding; v ? [r.fiscal_year, v] : nil }
+    if dso_with_year.size >= 3
+      min_year, min_val = dso_with_year.min_by { |_, v| v }
+      unless min_year == dso_with_year.first[0] || min_year == dso_with_year.last[0]
+        lines << "| ⚑ DSO min. période | #{min_val.round(1)} j en #{min_year} (valeur la plus basse) — tendance structurelle au raccourcissement AVANT #{min_year}, puis remontée à partir de #{min_year} : analyser la cause conjoncturelle de cette remontée ||||||"
+      end
+    end
     lines << table_row("DIO — stocks (j)",           ->(r){ r.days_inventory_outstanding&.round(0) })
     lines << table_row("DPO — fournisseurs (j, large)", ->(r){
       bs      = r.balance_sheet
@@ -299,6 +325,10 @@ class FinancialAnalysisGenerator
     end
     lines << table_row("État outil industriel %",    ->(r){ fmt_pct_ratio(r.balance_sheet&.industrial_tool_ratio) })
     lines << table_row("Ratio investissement/DAP",   ->(r){ r.industrial_policy_ratio&.round(2) })
+    capex_da_below = @reports.filter_map { |r| v = r.industrial_policy_ratio; (v && v < 1) ? "#{r.fiscal_year}: #{v.round(2)}" : nil }
+    if capex_da_below.any?
+      lines << "| ⚑ CAPEX < DAP | Années #{capex_da_below.join(", ")} → ratio < 1 : sous-investissement relatif en immos corporelles — identifier la cause (conjoncture, gel investissements, stratégie) ||||||"
+    end
     lines << table_row("Intensité capitalistique",   ->(r){ r.capital_intensity&.round(2) })
     lines << ""
 
@@ -520,6 +550,22 @@ class FinancialAnalysisGenerator
         synthèse double perspective — actionnaires (Rcp, dividendes, signal boursier) et
         prêteurs (Re vs CMPC, couverture des intérêts, solvabilité) — la note NE PEUT PAS
         se terminer sur le seul constat de la capitalisation boursière
+
+      ### Principe analytique fondamental — anomalies et contexte économique
+
+      Avant de rédiger, parcourir CHAQUE ligne du tableau de données et identifier les années
+      où une valeur s'écarte significativement de la tendance (minimum ou maximum sur la période,
+      ou rupture de tendance). Pour chaque anomalie identifiée :
+      1. La signaler explicitement avec l'année concernée et la valeur
+      2. Mobiliser les connaissances générales de la conjoncture mondiale et sectorielle
+         pour en proposer une explication probable : crises sanitaires (COVID-19 2020-2021),
+         crises financières (2008-2009), chocs géopolitiques (guerres, sanctions, chocs pétroliers),
+         transformations structurelles des modes de consommation ou des chaînes d'approvisionnement
+      3. Distinguer explicitement si l'anomalie est CONJONCTURELLE (temporaire, due à un choc externe)
+         ou STRUCTURELLE (tendance de fond indépendante du contexte)
+      Ne jamais laisser une anomalie sans explication ni qualification.
+      Les lignes ⚑ dans les tableaux ci-dessus signalent des anomalies pré-identifiées
+      que tu dois obligatoirement analyser et contextualiser.
 
       ### Checklist thématique (exhaustivité obligatoire)
 
