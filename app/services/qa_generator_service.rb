@@ -523,6 +523,11 @@ class QaGeneratorService
     lines << ""
     lines << "## Questions auxquelles tu dois répondre"
     lines << ""
+    lines << "**Format ANAFI — attention** : certaines questions numériques contiennent"
+    lines << "\"Si vous avez trouvé X, tapez Y\" — c'est UNIQUEMENT un exemple de format"
+    lines << "(nombre de décimales, arrondi). La valeur X n'est PAS la réponse attendue."
+    lines << "Tu dois calculer la réponse réelle à partir des données financières ci-dessus."
+    lines << ""
 
     @questions.each do |q|
       type_label = if q.numerical?

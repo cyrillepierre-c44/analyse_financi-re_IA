@@ -423,6 +423,9 @@ class CompanyPdfImporter
         "numerical" → la réponse est un nombre à calculer (pas d'options lettrées)
       - Pour les questions numériques, options = ["unité de la réponse"] (ex: ["millions d'euros"], ["%"], ["jours"])
       - Copier les options exactement telles qu'elles apparaissent dans le document.
+      - FORMAT ANAFI : les questions numériques contiennent parfois "Si vous avez trouvé X, tapez Y".
+        C'est uniquement un exemple de format de saisie (précision/arrondi attendus), PAS la réponse.
+        Conserver ce texte dans le champ "text" tel quel — ne pas l'interpréter comme une réponse.
       - Si le document ne contient aucune question numérotée, retourner {"questions": []}
 
       ## Format JSON attendu
