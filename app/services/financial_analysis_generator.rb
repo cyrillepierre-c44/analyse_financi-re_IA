@@ -189,7 +189,7 @@ class FinancialAnalysisGenerator
     lines << "Secteur : #{@company.sector || 'N/R'}  |  Référentiel : #{@company.accounting_standard&.upcase}  |  Pays : #{@company.country}"
     if (tcam = @company.cagr_revenue)
       sign = tcam >= 0 ? "+" : ""
-      lines << "TCAM du CA (#{@reports.first.fiscal_year}→#{@reports.last.fiscal_year}) : #{sign}#{(tcam * 100).round(1)} %/an"
+      lines << "TCAM du CA (#{@reports.first.fiscal_year}→#{@reports.last.fiscal_year}) : #{sign}#{(tcam * 100).to_i} %/an"
     end
     lines << ""
 
@@ -507,6 +507,8 @@ class FinancialAnalysisGenerator
       - Capitalisation boursière — RÈGLE IMPÉRATIVE :
         Lire dans "## Contexte et données sectorielles" si une capitalisation boursière y est mentionnée.
         Si oui, ce paragraphe NE PEUT PAS être omis — l'omettre est une faute grave.
+        NE JAMAIS inventer ni mentionner une année pour la capitalisation boursière si elle n'est pas
+        explicitement indiquée dans le contexte — écrire simplement "la capitalisation boursière" sans date.
         Comparer la capitalisation aux capitaux propres comptables de la DERNIÈRE année et chiffrer
         l'écart en pourcentage.
         Si capitalisation < CP : écrire EXACTEMENT :
