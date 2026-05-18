@@ -673,20 +673,20 @@ class QaGeneratorService
       is&.ebitda_calculated&.then { |v| (v / 1_000_000).round(0) }
 
     elsif t.match?(/taux d.imp[oô]t|is apparent|imp[oô]t apparent/)
-      next if is&.income_tax.nil? || is&.net_income.nil?
+      return nil if is&.income_tax.nil? || is&.net_income.nil?
       base = is.net_income + is.income_tax
       base > 0 ? (is.income_tax / base * 100).round(1) : nil
 
     elsif t.match?(/roa|rentabilit.*actif.*[eé]co|return on asset/)
-      next if is&.ebit.nil? || bs&.total_assets.nil?
+      return nil if is&.ebit.nil? || bs&.total_assets.nil?
       (is.ebit / bs.total_assets * 100).round(1)
 
     elsif t.match?(/autonomie financ/)
-      next if bs&.total_equity.nil? || bs&.total_assets.nil?
+      return nil if bs&.total_equity.nil? || bs&.total_assets.nil?
       (bs.total_equity / bs.total_assets * 100).round(1)
 
     elsif t.match?(/liquidit.*r[eé]duite|quick ratio|ratio de liquidit.*r/)
-      next if bs.nil?
+      return nil if bs.nil?
       num  = (bs.trade_receivables || 0) + (bs.cash_and_equivalents || 0)
       denom = (bs.trade_payables || 0) + (bs.st_financial_debt || 0)
       denom > 0 ? (num / denom * 100).round(0) : nil
