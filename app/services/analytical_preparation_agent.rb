@@ -50,12 +50,17 @@ class AnalyticalPreparationAgent
     # Phase 4b : filtrage des lacunes résolues
     log "Phase 4b – Filtrage des lacunes résolues…"
     remaining_gaps = filter_resolved_gaps(gaps, new_context)
-    log "  → #{gaps.size - remaining_gaps.size}/#{gaps.size} lacunes résolues, #{remaining_gaps.size} restantes"
+
+    # Séparer gaps importants (visibles) et secondaires (structurellement introuvables)
+    primary_gaps   = remaining_gaps.reject { |g| SECONDARY_GAP_PATTERNS.any? { |p| g.match?(p) } }
+    secondary_gaps = remaining_gaps.select { |g| SECONDARY_GAP_PATTERNS.any? { |p| g.match?(p) } }
+
+    log "  → #{gaps.size - remaining_gaps.size}/#{gaps.size} lacunes résolues, #{primary_gaps.size} importantes + #{secondary_gaps.size} secondaires restantes"
 
     @company.update!(
       ia_context:        new_context,
       ia_context_status: "ready",
-      ia_context_gaps:   remaining_gaps.join("\n")
+      ia_context_gaps:   primary_gaps.join("\n")
     )
 
     log "=== Terminé avec succès ==="
@@ -114,6 +119,10 @@ class AnalyticalPreparationAgent
       - Impact des variations de change sur les résultats
       - Structure des coûts (fixe vs variable, principaux postes)
 
+      RÈGLE IMPORTANTE : si le contexte contient déjà une valeur précise, une estimation
+      sectorielle ("~X %") ou une approximation raisonnée pour un point, NE PAS le signaler
+      comme lacune. Une lacune = absence totale d'information sur le sujet dans le contexte.
+
       Retourne une liste JSON (tableau de strings), chaque élément étant
       une lacune précise à combler. Si tout est déjà disponible, retourne [].
 
@@ -169,6 +178,23 @@ class AnalyticalPreparationAgent
     llm_call(prompt, max_tokens: 600)
   end
 
+  # Gaps secondaires : structurellement introuvables (données confidentielles non publiées).
+  # Passés à generate_context pour enrichissement LLM, mais exclus de ia_context_gaps.
+  SECONDARY_GAP_PATTERNS = [
+    /taux d.intérêt/i,
+    /lignes de crédit/i,
+    /variations de change/i,
+    /structure.*coûts/i,
+    /coûts.*fix/i,
+    /répartition.*coûts/i,
+    /postes de coûts/i,
+    /valeur comptable.*participation/i,
+    /dividendes reçus.*participation/i
+  ].freeze
+
+  # Alias pour search_web (même liste — pas de recherche Tavily non plus)
+  WEB_SKIP_PATTERNS = SECONDARY_GAP_PATTERNS
+
   # ── PHASE 3 : RECHERCHE WEB ───────────────────────────────────────────────────
   def search_web(gaps)
     return "" if gaps.empty?
@@ -177,8 +203,12 @@ class AnalyticalPreparationAgent
     searcher = WebSearchService.new
     results  = []
 
-    # Toutes les lacunes sont recherchées, sans plafond
+    # Toutes les lacunes sont recherchées, sauf celles que Tavily ne peut pas résoudre
     gaps.each do |gap|
+      if WEB_SKIP_PATTERNS.any? { |p| gap.match?(p) }
+        log "  → Skip web (données non publiées) : #{gap}"
+        next
+      end
       query = gap_to_query(gap)
       log "  → Recherche : #{query}"
       hits  = searcher.search(query, max_results: 5)
@@ -219,7 +249,7 @@ class AnalyticalPreparationAgent
       Élimine le bruit marketing. Conserve les chiffres et dates précis.
 
       CONTENU WEB :
-      #{web_text.truncate(35_000)}
+      #{web_text.truncate(24_000)}
     PROMPT
 
     llm_call(prompt, max_tokens: 700)
@@ -247,9 +277,14 @@ class AnalyticalPreparationAgent
       #{context.truncate(8_000)}
 
       Ta tâche : identifier quelles lacunes restent NON RÉSOLUES dans le contexte généré.
-      - Lacune RÉSOLUE = le contexte contient des informations substantielles sur ce point.
-      - Lacune NON RÉSOLUE = le contexte ne mentionne pas le sujet, ou précise explicitement
-        que l'information n'est pas disponible.
+      - Lacune RÉSOLUE = le contexte contient des informations substantielles sur ce point,
+        y compris une estimation sectorielle ("~X %"), une approximation raisonnée, ou une
+        valeur partielle. Le critère est : "un analyste peut travailler avec cette donnée".
+      - Lacune NON RÉSOLUE = le contexte marque explicitement "n/d" sans chiffre, ou ne
+        mentionne pas du tout le sujet.
+
+      Sois INDULGENT : si la donnée est présente à 70 % (ex : actionnariat avec les
+      principaux actionnaires et leurs %, même sans détail exhaustif), marque-la RÉSOLUE.
 
       Retourne UNIQUEMENT un tableau JSON des lacunes encore non résolues (strings, formulées
       exactement comme dans la liste ci-dessus). Sans texte autour.
